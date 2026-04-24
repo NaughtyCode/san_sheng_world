@@ -165,49 +165,129 @@ std::string AgentLoop::run(const std::string& user_input) {
     return "Agent stopped: maximum iterations reached.";
 }
 
-bool AgentLoop::has_tool_use(const json& response) const {
-    if (!response.contains(constants::JSON_CONTENT)) return false;
-    const auto& content = response[constants::JSON_CONTENT];
-    if (!content.is_array()) return false;
+// 解析 OpenAI 响应：从 choices[0].message 中提取消息对象
+static json get_message_from_response(const json& response) {
+    if (response.contains(constants::JSON_CHOICES) &&
+        response[constants::JSON_CHOICES].is_array() &&
+        !response[constants::JSON_CHOICES].empty()) {
+        const auto& first_choice = response[constants::JSON_CHOICES][0];
+        if (first_choice.contains(constants::JSON_MESSAGE)) {
+            return first_choice[constants::JSON_MESSAGE];
+        }
+    }
+    // 兼容 Anthropic 原始格式：直接在根级别包含 content
+    return response;
+}
 
-    for (const auto& block : content) {
-        if (block.value(constants::JSON_TYPE, "") == constants::VALUE_TOOL_USE) {
-            return true;
+bool AgentLoop::has_tool_use(const json& response) const {
+    json msg = get_message_from_response(response);
+
+    // OpenAI 格式：检查 message.tool_calls 数组
+    if (msg.contains(constants::JSON_TOOL_CALLS) &&
+        msg[constants::JSON_TOOL_CALLS].is_array() &&
+        !msg[constants::JSON_TOOL_CALLS].empty()) {
+        return true;
+    }
+
+    // 兼容 Anthropic 原始格式：检查 content 数组中的 tool_use 块
+    if (msg.contains(constants::JSON_CONTENT) && msg[constants::JSON_CONTENT].is_array()) {
+        for (const auto& block : msg[constants::JSON_CONTENT]) {
+            if (block.value(constants::JSON_TYPE, "") == constants::VALUE_TOOL_USE) {
+                return true;
+            }
         }
     }
     return false;
 }
 
 json AgentLoop::extract_tool_use(const json& response) const {
-    if (!response.contains(constants::JSON_CONTENT)) return json::object();
-    for (const auto& block : response[constants::JSON_CONTENT]) {
-        if (block.value(constants::JSON_TYPE, "") == constants::VALUE_TOOL_USE) {
-            return block;
+    json msg = get_message_from_response(response);
+
+    // OpenAI 格式：从 tool_calls 数组中提取第一个工具调用
+    // 并转换成内部统一格式 {id, name, input}
+    if (msg.contains(constants::JSON_TOOL_CALLS) &&
+        msg[constants::JSON_TOOL_CALLS].is_array() &&
+        !msg[constants::JSON_TOOL_CALLS].empty()) {
+        const auto& tc = msg[constants::JSON_TOOL_CALLS][0];
+        json result;
+        result[constants::JSON_ID] = tc.value(constants::JSON_ID, "");
+
+        // function.name 映射为 name
+        if (tc.contains(constants::JSON_FUNCTION)) {
+            result[constants::JSON_NAME] =
+                tc[constants::JSON_FUNCTION].value(constants::JSON_NAME, "");
+
+            // function.arguments 是 JSON 字符串，需要解析为 input
+            std::string args_str =
+                tc[constants::JSON_FUNCTION].value(constants::JSON_ARGUMENTS, "{}");
+            try {
+                result[constants::JSON_INPUT] = json::parse(args_str);
+            } catch (const json::parse_error&) {
+                result[constants::JSON_INPUT] = json::object();
+            }
+        } else {
+            result[constants::JSON_NAME] = "";
+            result[constants::JSON_INPUT] = json::object();
+        }
+        return result;
+    }
+
+    // 兼容 Anthropic 原始格式
+    if (msg.contains(constants::JSON_CONTENT)) {
+        for (const auto& block : msg[constants::JSON_CONTENT]) {
+            if (block.value(constants::JSON_TYPE, "") == constants::VALUE_TOOL_USE) {
+                return block;
+            }
         }
     }
     return json::object();
 }
 
 std::string AgentLoop::extract_text(const json& response) const {
-    if (!response.contains(constants::JSON_CONTENT)) return "";
-    const auto& content = response[constants::JSON_CONTENT];
-    if (!content.is_array()) return "";
+    json msg = get_message_from_response(response);
 
-    std::string text;
-    for (const auto& block : content) {
-        if (block.value(constants::JSON_TYPE, "") == constants::VALUE_TEXT) {
-            std::string t = block.value(constants::JSON_TEXT, "");
-            if (!t.empty()) {
-                if (!text.empty()) text += "\n";
-                text += t;
+    // OpenAI 格式：content 是纯字符串
+    if (msg.contains(constants::JSON_CONTENT) && msg[constants::JSON_CONTENT].is_string()) {
+        return msg[constants::JSON_CONTENT].get<std::string>();
+    }
+
+    // 兼容 Anthropic 原始格式：content 是数组
+    if (msg.contains(constants::JSON_CONTENT) && msg[constants::JSON_CONTENT].is_array()) {
+        std::string text;
+        for (const auto& block : msg[constants::JSON_CONTENT]) {
+            if (block.value(constants::JSON_TYPE, "") == constants::VALUE_TEXT) {
+                std::string t = block.value(constants::JSON_TEXT, "");
+                if (!t.empty()) {
+                    if (!text.empty()) text += "\n";
+                    text += t;
+                }
             }
         }
+        return text;
     }
-    return text;
+    return "";
 }
 
 bool AgentLoop::should_stop(const json& response) const {
-    // 检查 stop_reason
+    // OpenAI 格式：检查 choices[0].finish_reason
+    if (response.contains(constants::JSON_CHOICES) &&
+        response[constants::JSON_CHOICES].is_array() &&
+        !response[constants::JSON_CHOICES].empty()) {
+        const auto& first_choice = response[constants::JSON_CHOICES][0];
+        std::string finish_reason = first_choice.value(constants::JSON_FINISH_REASON, "");
+
+        // "stop" 或 "length"（max_tokens）表示对话结束
+        if (finish_reason == constants::VALUE_STOP) return true;
+        if (finish_reason == constants::VALUE_MAX_TOKENS) return true;
+        // "tool_calls" 表示需要执行工具，不应停止
+        if (finish_reason == constants::VALUE_TOOL_CALLS) return false;
+
+        // 如果 finish_reason 未知且没有 tool_use，则停止
+        if (!has_tool_use(response)) return true;
+        return false;
+    }
+
+    // 兼容 Anthropic 原始格式：检查 stop_reason
     std::string reason = response.value(constants::JSON_STOP_REASON, "");
     if (reason == constants::VALUE_END_TURN) return true;
     if (reason == constants::VALUE_STOP_SEQUENCE) return true;

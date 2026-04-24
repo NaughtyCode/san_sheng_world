@@ -29,6 +29,7 @@ json AnthropicClient::messages_create(const std::string& model,
     Logger::instance().debug("AnthropicClient: POST %s, model=%s, msg_count=%zu",
                               full_url.c_str(), model.c_str(), messages.size());
 
+    // OpenAI 兼容端点使用 Bearer 认证方式，但 DeepSeek 同时支持 x-api-key 和 Authorization 头
     http_.set_header(constants::API_HEADER_ANTHROPIC_VERSION, api_version_);
     auto resp = http_.post(constants::API_PATH_MESSAGES, body.dump());
 
@@ -74,13 +75,23 @@ json AnthropicClient::build_request_body(const std::string& model,
     body[JSON_MAX_TOKENS] = max_tokens;
     body[JSON_MESSAGES] = messages_to_api_format(messages);
 
+    // 使用 OpenAI Chat Completions 格式构造 tools 数组
+    // 每个工具对象包含 type: "function" 和一个 function 子对象
     if (!tools.empty()) {
         json tools_array = json::array();
         for (const auto& td : tools) {
             json t;
-            t[JSON_NAME] = td.name;
-            t[JSON_DESCRIPTION] = td.description;
-            t[JSON_INPUT_SCHEMA] = td.input_schema;
+            // OpenAI 格式要求每个 tool 必须有 type 字段
+            t[JSON_TYPE] = VALUE_FUNCTION;
+
+            // 工具详情包装在 function 对象中
+            json func;
+            func[JSON_NAME] = td.name;
+            func[JSON_DESCRIPTION] = td.description;
+            // OpenAI 使用 parameters 而非 Anthropic 的 input_schema
+            func[JSON_PARAMETERS] = td.input_schema;
+            t[JSON_FUNCTION] = func;
+
             tools_array.push_back(t);
         }
         body[JSON_TOOLS] = tools_array;
@@ -96,26 +107,28 @@ json AnthropicClient::messages_to_api_format(const std::vector<Message>& msgs) {
         msg[JSON_ROLE] = m.role;
 
         if (m.role == VALUE_TOOL) {
-            // tool_result 消息格式
-            json block;
-            block[JSON_TYPE] = VALUE_TOOL_RESULT;
-            block[JSON_TOOL_USE_ID] = m.tool_call_id;
-            block[JSON_CONTENT] = m.content;
-            msg[JSON_CONTENT] = json::array({block});
+            // OpenAI 格式 — tool 角色消息
+            // tool 消息的 content 为纯字符串，tool_call_id 与 role 平级
+            msg[JSON_TOOL_USE_ID] = m.tool_call_id;
+            msg[JSON_CONTENT] = m.content;
         } else if (m.role == VALUE_ASSISTANT && !m.tool_name.empty()) {
-            // assistant 消息包含 tool_use 块
-            json text_block;
-            text_block[JSON_TYPE] = VALUE_TEXT;
-            text_block[JSON_TEXT] = m.content;
+            // OpenAI 格式 — assistant 消息包含 tool_calls 数组
+            // content 为纯字符串（可为空），tool_calls 为数组
+            msg[JSON_CONTENT] = m.content.empty() ? "" : m.content;
 
-            json tool_block;
-            tool_block[JSON_TYPE] = VALUE_TOOL_USE;
-            tool_block[JSON_ID] = m.tool_call_id;
-            tool_block[JSON_NAME] = m.tool_name;
-            tool_block[JSON_INPUT] = m.tool_input;
-            msg[JSON_CONTENT] = json::array({text_block, tool_block});
+            json tool_call;
+            tool_call[JSON_ID] = m.tool_call_id;
+            tool_call[JSON_TYPE] = VALUE_FUNCTION;
+            // arguments 在 OpenAI 中必须是 JSON 字符串
+            tool_call[JSON_FUNCTION] = json::object();
+            tool_call[JSON_FUNCTION][JSON_NAME] = m.tool_name;
+            tool_call[JSON_FUNCTION][JSON_ARGUMENTS] = m.tool_input.is_null()
+                ? "{}" : m.tool_input.dump();
+
+            msg[JSON_TOOL_CALLS] = json::array({tool_call});
         } else {
-            // 纯文本消息
+            // 纯文本消息 — user / assistant（不含 tool_use）均为此分支
+            // OpenAI 格式中 content 为纯字符串
             msg[JSON_CONTENT] = m.content;
         }
 

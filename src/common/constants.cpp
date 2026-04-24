@@ -80,6 +80,15 @@ const std::string JSON_PROPERTIES("properties");
 const std::string JSON_REQUIRED("required");
 const std::string JSON_OBJECT("object");
 const std::string JSON_STRING("string");
+const std::string JSON_FUNCTION("function");
+const std::string JSON_PARAMETERS("parameters");
+const std::string JSON_TOOL_CALLS("tool_calls");
+const std::string JSON_ARGUMENTS("arguments");
+const std::string JSON_CHOICES("choices");
+const std::string JSON_MESSAGE("message");
+const std::string JSON_FINISH_REASON("finish_reason");
+const std::string JSON_DELTA("delta");
+const std::string JSON_INDEX("index");
 
 // ============================================================================
 // JSON 值
@@ -93,5 +102,8 @@ const std::string VALUE_TOOL("tool");
 const std::string VALUE_END_TURN("end_turn");
 const std::string VALUE_STOP_SEQUENCE("stop_sequence");
 const std::string VALUE_MAX_TOKENS("max_tokens");
+const std::string VALUE_FUNCTION("function");
+const std::string VALUE_TOOL_CALLS("tool_calls");
+const std::string VALUE_STOP("stop");
 
 } // namespace agent::constants

@@ -81,6 +81,15 @@ extern const std::string JSON_PROPERTIES;     // JSON Schema properties
 extern const std::string JSON_REQUIRED;       // JSON Schema required
 extern const std::string JSON_OBJECT;         // JSON Schema type "object"
 extern const std::string JSON_STRING;         // JSON Schema type "string"
+extern const std::string JSON_FUNCTION;       // OpenAI tool/function wrapper key
+extern const std::string JSON_PARAMETERS;     // OpenAI tool parameters key（对应 Anthropic 的 input_schema）
+extern const std::string JSON_TOOL_CALLS;     // OpenAI assistant 消息中的 tool_calls 字段
+extern const std::string JSON_ARGUMENTS;      // OpenAI tool_calls 中的 arguments 字段
+extern const std::string JSON_CHOICES;        // OpenAI 响应中的 choices 数组
+extern const std::string JSON_MESSAGE;        // OpenAI 响应 choice 中的 message 对象
+extern const std::string JSON_FINISH_REASON;  // OpenAI 响应中的 finish_reason 字段
+extern const std::string JSON_DELTA;          // OpenAI streaming chunk 中的 delta
+extern const std::string JSON_INDEX;          // OpenAI choice 的索引字段
 
 // ============================================================================
 // JSON 值 — 固定的字符串取值
@@ -94,5 +103,8 @@ extern const std::string VALUE_TOOL;           // role: tool
 extern const std::string VALUE_END_TURN;       // stop_reason: end_turn
 extern const std::string VALUE_STOP_SEQUENCE;  // stop_reason: stop_sequence
 extern const std::string VALUE_MAX_TOKENS;     // stop_reason: max_tokens
+extern const std::string VALUE_FUNCTION;       // OpenAI tool type: "function"
+extern const std::string VALUE_TOOL_CALLS;     // OpenAI finish_reason: "tool_calls"
+extern const std::string VALUE_STOP;           // OpenAI finish_reason: "stop"
 
 } // namespace agent::constants
