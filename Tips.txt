@@ -1,0 +1,8 @@
+请按照 ./final_requirements.md 中的描述执行任务
+
+请按照 ./final_requirements.md 中的要求执行任务
+
+分析./src目录下代码存在的问题，并把问题整理到一个markdown文件中放根目录
+
+claude --dangerously-skip-permissions
+

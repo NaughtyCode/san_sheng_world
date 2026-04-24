@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init *)",
+      "Bash(git submodule *)",
+      "Bash(cmake --version)",
+      "Bash(g++ --version)",
+      "Bash(make --version)",
+      "Read(//mingw64/bin/**)",
+      "Read(//c/mingw/bin/**)",
+      "PowerShell(Get-Command *)",
+      "Read(//c/Users/user/anaconda3/Library/mingw-w64/bin/**)",
+      "Read(//c/Program Files/Microsoft Visual Studio/**)",
+      "Read(//c/Program Files \\(x86\\)/Microsoft Visual Studio/**)",
+      "Read(//usr/**)",
+      "Bash(ls /bin/*g++*)",
+      "Bash(where g++.exe)",
+      "Bash(where gcc.exe)",
+      "Read(//c//**)",
+      "Bash(choco list *)",
+      "Bash(choco install *)",
+      "Read(//c/ProgramData/chocolatey/lib/**)",
+      "Read(//c/ProgramData/chocolatey/lib/mingw/**)",
+      "Bash(cmake --help)",
+      "Bash(pacman *)",
+      "PowerShell(Test-Path *)",
+      "Bash(cmake -G)",
+      "Read(//c/msys64/usr/bin/**)",
+      "Read(//bin/**)",
+      "Bash(find /c -name \"pacman.exe\" -maxdepth 5)"
+    ]
+  }
+}

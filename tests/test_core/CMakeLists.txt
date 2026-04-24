@@ -1,0 +1,11 @@
+add_executable(test_conversation test_conversation.cpp)
+target_link_libraries(test_conversation PRIVATE agent_core agent_common gtest_main)
+add_test(NAME test_conversation COMMAND test_conversation)
+
+add_executable(test_tool_registry test_tool_registry.cpp)
+target_link_libraries(test_tool_registry PRIVATE agent_core agent_common gtest_main)
+add_test(NAME test_tool_registry COMMAND test_tool_registry)
+
+add_executable(test_agent_loop test_agent_loop.cpp)
+target_link_libraries(test_agent_loop PRIVATE agent_core agent_common gtest_main Luau.VM Luau.Compiler)
+add_test(NAME test_agent_loop COMMAND test_agent_loop)
