@@ -1,2 +1,5 @@
 
 build/*
+external/cpp-httplib
+external/json
+external/luau
