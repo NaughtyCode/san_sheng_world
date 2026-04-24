@@ -66,6 +66,9 @@ int main(int argc, char* argv[]) {
 
     log.info("Agent initialized with model: %s", model.c_str());
 
+    // Print model info
+    std::cout << agent.get_model_info() << std::endl;
+
     // Run with initial prompt if provided
     if (!initial_prompt.empty()) {
         std::string response = agent.run(utils::trim(initial_prompt));

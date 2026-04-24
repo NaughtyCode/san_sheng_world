@@ -17,6 +17,8 @@ public:
     void set_max_tokens(int max_tokens) { max_tokens_ = max_tokens; }
     void set_max_iterations(int max_iter) { max_iterations_ = max_iter; }
 
+    std::string get_model_info() const;
+
     void register_tool(const std::string& name,
                        const std::string& description,
                        const nlohmann::json& input_schema,

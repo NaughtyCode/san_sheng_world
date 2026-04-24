@@ -31,6 +31,14 @@ public:
     void set_model(const std::string& model) { model_ = model; }
     void set_base_url(const std::string& url);
 
+    std::string get_model() const { return model_; }
+    std::string get_base_url() const { return base_url_; }
+    std::string get_api_version() const { return api_version_; }
+    std::string get_api_key_masked() const {
+        if (api_key_.length() <= 8) return std::string(api_key_.length(), '*');
+        return api_key_.substr(0, 7) + "****" + api_key_.substr(api_key_.length() - 4);
+    }
+
     /**
      * Send a Messages API request. Returns the model's response.
      * On tool_use, response content will contain the tool call as a JSON string,

@@ -17,6 +17,17 @@ void AgentLoop::set_model(const std::string& model) {
     api_client_.set_model(model);
 }
 
+std::string AgentLoop::get_model_info() const {
+    std::string info;
+    info += "Model: " + api_client_.get_model() + "\n";
+    info += "Base URL: " + api_client_.get_base_url() + "\n";
+    info += "API Version: " + api_client_.get_api_version() + "\n";
+    info += "API Key: " + api_client_.get_api_key_masked() + "\n";
+    info += "Max Tokens: " + std::to_string(max_tokens_) + "\n";
+    info += "Max Iterations: " + std::to_string(max_iterations_);
+    return info;
+}
+
 void AgentLoop::register_tool(const std::string& name,
                                const std::string& description,
                                const nlohmann::json& input_schema,
@@ -98,7 +109,7 @@ std::string AgentLoop::run(const std::string& user_input) {
 
         // Build API request
         auto response = api_client_.messages_create(
-            "claude-sonnet-4-6",
+            api_client_.get_model(),
             conversation_.get_messages(),
             tool_registry_.get_definitions(),
             max_tokens_);

@@ -6,3 +6,17 @@
 
 claude --dangerously-skip-permissions
 
+
+
+
+
+
+
+
+
+
+
+
+
+增加功能: 启动时输出当前使用模型的全部信息，包括URL
+
