@@ -1,0 +1,8 @@
+[2026-04-24 16:08:31] [INFO] AgentLoop: starting with user input, 1 tools registered
+[2026-04-24 16:08:31] [ERROR] HTTP POST exception: 'https' scheme is not supported.
+[2026-04-24 16:08:31] [ERROR] AnthropicClient: HTTP error: HTTP error: 'https' scheme is not supported.
+[2026-04-24 16:08:31] [ERROR] AgentLoop: empty response from API
+
+Error: failed to get response from API
+
+
