@@ -1,0 +1,16 @@
+
+增加功能：
+工程使用到的参数请支持从一下环境变量获取：
+ANTHROPIC_SMALL_FAST_MODEL:     deepseek-v4-pro
+ANTHROPIC_MODEL:                deepseek-v4-pro
+ANTHROPIC_CUSTOM_MODEL_OPTION:  deepseek-v4-pro
+ANTHROPIC_BASE_URL:             https://api.deepseek.com/anthropic
+ANTHROPIC_AUTH_TOKEN:           DUMMY_KEY
+API_TIMEOUT_MS:                 600000
+
+要求
+1. 完成后构建并运行、测试，直到全部成功
+2. 生成完整的修改记录文档；
+3. 代码必须加上详细注释
+4. 把代码中使用的各种常量全部到一个cpp中定义，通过在头文件中声明再使用
+
