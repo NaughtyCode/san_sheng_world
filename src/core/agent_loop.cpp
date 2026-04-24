@@ -19,8 +19,8 @@ void AgentLoop::set_model(const std::string& model) {
 
 std::string AgentLoop::get_model_info() const {
     std::string info;
+    info += "Endpoint: " + api_client_.get_base_url() + constants::API_PATH_MESSAGES + "\n";
     info += "Model: " + api_client_.get_model() + "\n";
-    info += "Base URL: " + api_client_.get_base_url() + "\n";
     info += "API Version: " + api_client_.get_api_version() + "\n";
     info += "API Key: " + api_client_.get_api_key_masked() + "\n";
     info += "Max Tokens: " + std::to_string(max_tokens_) + "\n";

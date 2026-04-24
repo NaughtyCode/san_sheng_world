@@ -1,0 +1,15 @@
+
+要求
+1. 完成后构建并运行、测试，直到全部成功
+2. 生成完整的修改记录文档,修改记录文档放changelog目录下；
+3. 代码必须加上详细注释
+4. 把src/common/constants.hpp和src/common/constants.cpp中定义的变量加上使用场景对应的前缀，别面重复
+
+
+修复下面问题：
+[2026-04-24 17:11:51] [INFO] AgentLoop: starting with user input, 1 tools registered
+[2026-04-24 17:11:51] [ERROR] AnthropicClient: API error 404:
+[2026-04-24 17:11:51] [ERROR] AgentLoop: empty response from API
+
+Error: failed to get response from API
+

@@ -24,19 +24,35 @@ json AnthropicClient::messages_create(const std::string& model,
                                        int max_tokens) {
     auto body = build_request_body(model, messages, tools, max_tokens);
 
-    Logger::instance().debug("AnthropicClient: sending request, model=%s, msg_count=%zu",
-                              model.c_str(), messages.size());
+    // 构造完整 URL 用于诊断输出
+    std::string full_url = base_url_ + constants::API_PATH_MESSAGES;
+    Logger::instance().debug("AnthropicClient: POST %s, model=%s, msg_count=%zu",
+                              full_url.c_str(), model.c_str(), messages.size());
 
     http_.set_header(constants::API_HEADER_ANTHROPIC_VERSION, api_version_);
     auto resp = http_.post(constants::API_PATH_MESSAGES, body.dump());
 
     if (resp.status == -1) {
-        Logger::instance().error("AnthropicClient: HTTP error: %s", resp.body.c_str());
+        Logger::instance().error("AnthropicClient: HTTP connection failed (url=%s): %s",
+                                  full_url.c_str(), resp.body.c_str());
         return json::object();
     }
 
     if (resp.status < 200 || resp.status >= 300) {
-        Logger::instance().error("AnthropicClient: API error %d: %s", resp.status, resp.body.c_str());
+        // 针对常见 HTTP 错误码提供排查建议
+        std::string hint;
+        switch (resp.status) {
+            case 400: hint = " [Bad Request — check request body format]"; break;
+            case 401: hint = " [Unauthorized — check API key]"; break;
+            case 403: hint = " [Forbidden — check API key permissions]"; break;
+            case 404: hint = " [Not Found — check API endpoint: "
+                       + base_url_ + constants::API_PATH_MESSAGES + "]"; break;
+            case 429: hint = " [Rate Limited — retry later]"; break;
+            case 500: hint = " [Internal Server Error — API-side issue]"; break;
+            default: break;
+        }
+        Logger::instance().error("AnthropicClient: API error %d from %s: %s%s",
+                                  resp.status, full_url.c_str(), resp.body.c_str(), hint);
         return json::object();
     }
 

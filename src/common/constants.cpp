@@ -56,7 +56,7 @@ const std::string API_HEADER_CONTENT_TYPE("Content-Type");
 const std::string API_HEADER_X_API_KEY("x-api-key");
 const std::string API_HEADER_ANTHROPIC_VERSION("anthropic-version");
 const std::string API_MIME_JSON("application/json");
-const std::string API_PATH_MESSAGES("/v1/messages");
+const std::string API_PATH_MESSAGES("/chat/completions");
 
 // ============================================================================
 // JSON 键
