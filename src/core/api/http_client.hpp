@@ -2,6 +2,7 @@
 #include <string>
 #include <map>
 #include <utility>
+#include "constants.hpp"
 
 namespace agent {
 
@@ -26,7 +27,7 @@ public:
 private:
     std::string base_url_;
     std::map<std::string, std::string> headers_;
-    int timeout_ = 30;
+    int timeout_ = constants::DEFAULT_TIMEOUT_MS / 1000;  // 默认超时（秒），从毫秒常量换算
 };
 
 } // namespace agent

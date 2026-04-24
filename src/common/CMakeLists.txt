@@ -1,4 +1,5 @@
 add_library(agent_common STATIC
+    constants.cpp
     logger.cpp
     config.cpp
     utils.cpp

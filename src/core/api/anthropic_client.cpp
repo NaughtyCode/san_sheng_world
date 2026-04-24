@@ -5,12 +5,12 @@ namespace agent {
 
 AnthropicClient::AnthropicClient() {
     http_.set_base_url(base_url_);
-    http_.set_header("Content-Type", "application/json");
+    http_.set_header(constants::API_HEADER_CONTENT_TYPE, constants::API_MIME_JSON);
 }
 
 void AnthropicClient::set_api_key(const std::string& key) {
     api_key_ = key;
-    http_.set_header("x-api-key", key);
+    http_.set_header(constants::API_HEADER_X_API_KEY, key);
 }
 
 void AnthropicClient::set_base_url(const std::string& url) {
@@ -27,8 +27,8 @@ json AnthropicClient::messages_create(const std::string& model,
     Logger::instance().debug("AnthropicClient: sending request, model=%s, msg_count=%zu",
                               model.c_str(), messages.size());
 
-    http_.set_header("anthropic-version", api_version_);
-    auto resp = http_.post("/v1/messages", body.dump());
+    http_.set_header(constants::API_HEADER_ANTHROPIC_VERSION, api_version_);
+    auto resp = http_.post(constants::API_PATH_MESSAGES, body.dump());
 
     if (resp.status == -1) {
         Logger::instance().error("AnthropicClient: HTTP error: %s", resp.body.c_str());
@@ -52,53 +52,55 @@ json AnthropicClient::build_request_body(const std::string& model,
                                           const std::vector<Message>& messages,
                                           const std::vector<ToolDefinition>& tools,
                                           int max_tokens) {
+    using namespace constants;
     json body;
-    body["model"] = model;
-    body["max_tokens"] = max_tokens;
-    body["messages"] = messages_to_api_format(messages);
+    body[JSON_MODEL] = model;
+    body[JSON_MAX_TOKENS] = max_tokens;
+    body[JSON_MESSAGES] = messages_to_api_format(messages);
 
     if (!tools.empty()) {
         json tools_array = json::array();
         for (const auto& td : tools) {
             json t;
-            t["name"] = td.name;
-            t["description"] = td.description;
-            t["input_schema"] = td.input_schema;
+            t[JSON_NAME] = td.name;
+            t[JSON_DESCRIPTION] = td.description;
+            t[JSON_INPUT_SCHEMA] = td.input_schema;
             tools_array.push_back(t);
         }
-        body["tools"] = tools_array;
+        body[JSON_TOOLS] = tools_array;
     }
     return body;
 }
 
 json AnthropicClient::messages_to_api_format(const std::vector<Message>& msgs) {
+    using namespace constants;
     json arr = json::array();
     for (const auto& m : msgs) {
         json msg;
-        msg["role"] = m.role;
+        msg[JSON_ROLE] = m.role;
 
-        if (m.role == "tool") {
-            msg["tool_use_id"] = m.tool_call_id;
-            // Send tool result as string content
+        if (m.role == VALUE_TOOL) {
+            // tool_result 消息格式
             json block;
-            block["type"] = "tool_result";
-            block["tool_use_id"] = m.tool_call_id;
-            block["content"] = m.content;
-            msg["content"] = json::array({block});
-        } else if (m.role == "assistant" && !m.tool_name.empty()) {
-            // Assistant message with tool_use blocks
+            block[JSON_TYPE] = VALUE_TOOL_RESULT;
+            block[JSON_TOOL_USE_ID] = m.tool_call_id;
+            block[JSON_CONTENT] = m.content;
+            msg[JSON_CONTENT] = json::array({block});
+        } else if (m.role == VALUE_ASSISTANT && !m.tool_name.empty()) {
+            // assistant 消息包含 tool_use 块
             json text_block;
-            text_block["type"] = "text";
-            text_block["text"] = m.content;
+            text_block[JSON_TYPE] = VALUE_TEXT;
+            text_block[JSON_TEXT] = m.content;
 
             json tool_block;
-            tool_block["type"] = "tool_use";
-            tool_block["id"] = m.tool_call_id;
-            tool_block["name"] = m.tool_name;
-            tool_block["input"] = m.tool_input;
-            msg["content"] = json::array({text_block, tool_block});
+            tool_block[JSON_TYPE] = VALUE_TOOL_USE;
+            tool_block[JSON_ID] = m.tool_call_id;
+            tool_block[JSON_NAME] = m.tool_name;
+            tool_block[JSON_INPUT] = m.tool_input;
+            msg[JSON_CONTENT] = json::array({text_block, tool_block});
         } else {
-            msg["content"] = m.content;
+            // 纯文本消息
+            msg[JSON_CONTENT] = m.content;
         }
 
         arr.push_back(msg);

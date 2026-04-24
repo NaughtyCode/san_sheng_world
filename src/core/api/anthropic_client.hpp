@@ -4,33 +4,42 @@
 #include <functional>
 #include <nlohmann/json.hpp>
 #include "api/http_client.hpp"
+#include "constants.hpp"
 
 namespace agent {
 
 using json = nlohmann::json;
 
 struct Message {
-    std::string role;       // "user", "assistant", "tool"
-    std::string content;    // text content
-    std::string tool_call_id;
-    std::string tool_name;
-    json tool_input;        // parsed tool_use input
+    std::string role;       // 消息角色：user / assistant / tool
+    std::string content;    // 文本内容
+    std::string tool_call_id; // tool_use 对应的 id
+    std::string tool_name;  // 被调用的工具名称
+    json tool_input;        // 工具调用参数（已解析的 JSON）
 };
 
 struct ToolDefinition {
-    std::string name;
-    std::string description;
-    json input_schema;
+    std::string name;             // 工具名称
+    std::string description;      // 工具描述
+    json input_schema;            // JSON Schema 格式的输入参数定义
 };
 
 class AnthropicClient {
 public:
     AnthropicClient();
 
+    // ---------- 配置 ----------
     void set_api_key(const std::string& key);
     void set_model(const std::string& model) { model_ = model; }
     void set_base_url(const std::string& url);
 
+    /**
+     * @brief 设置 HTTP 请求超时时间。
+     * @param seconds 超时秒数，传递给底层 HttpClient。
+     */
+    void set_timeout(int seconds) { http_.set_timeout(seconds); }
+
+    // ---------- 访问器 ----------
     std::string get_model() const { return model_; }
     std::string get_base_url() const { return base_url_; }
     std::string get_api_version() const { return api_version_; }
@@ -40,28 +49,38 @@ public:
     }
 
     /**
-     * Send a Messages API request. Returns the model's response.
-     * On tool_use, response content will contain the tool call as a JSON string,
-     * and the client must handle resubmission with tool results.
+     * @brief 发送 Messages API 请求。
+     *
+     * @param model       模型名称
+     * @param messages    对话历史
+     * @param tools       可用工具列表（可选）
+     * @param max_tokens  最大输出 token 数
+     * @return API 响应 JSON；失败时返回空 object
      */
     json messages_create(const std::string& model,
                          const std::vector<Message>& messages,
                          const std::vector<ToolDefinition>& tools = {},
-                         int max_tokens = 4096);
+                         int max_tokens = constants::DEFAULT_MAX_TOKENS);
 
 private:
+    /**
+     * @brief 构造请求体 JSON。
+     */
     json build_request_body(const std::string& model,
                             const std::vector<Message>& messages,
                             const std::vector<ToolDefinition>& tools,
                             int max_tokens);
 
+    /**
+     * @brief 将内部 Message 列表转换为 Anthropic API 格式的 JSON 数组。
+     */
     json messages_to_api_format(const std::vector<Message>& msgs);
 
     HttpClient http_;
     std::string api_key_;
-    std::string model_ = "claude-sonnet-4-6";
-    std::string base_url_ = "https://api.anthropic.com";
-    std::string api_version_ = "2023-06-01";
+    std::string model_ = constants::DEFAULT_MODEL;
+    std::string base_url_ = constants::DEFAULT_BASE_URL;
+    std::string api_version_ = constants::DEFAULT_API_VERSION;
 };
 
 } // namespace agent

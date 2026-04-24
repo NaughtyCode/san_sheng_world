@@ -5,7 +5,7 @@
 
 namespace agent {
 
-// Build the scheme_host_port string for httplib::Client
+// 从 base_url 提取 scheme + host + port 字符串用于 httplib 连接
 static std::string build_client_host(const std::string& base_url) {
     std::string host = base_url;
     if (!host.empty() && host.back() == '/') host.pop_back();
@@ -25,7 +25,7 @@ HttpResponse HttpClient::post(const std::string& path, const std::string& body) 
             httplib_headers.emplace(k, v);
         }
 
-        auto res = cli.Post(path, httplib_headers, body, "application/json");
+        auto res = cli.Post(path, httplib_headers, body, constants::API_MIME_JSON);
 
         if (res) {
             resp.status = res->status;
