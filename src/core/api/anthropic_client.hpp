@@ -16,6 +16,7 @@ struct Message {
     std::string tool_call_id; // tool_use 对应的 id
     std::string tool_name;  // 被调用的工具名称
     json tool_input;        // 工具调用参数（已解析的 JSON）
+    std::string reasoning_content; // DeepSeek thinking mode 推理内容（需在后续请求中回传）
 };
 
 struct ToolDefinition {

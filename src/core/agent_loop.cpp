@@ -85,13 +85,15 @@ void AgentLoop::load_builtin_tools() {
             if (expr.empty()) {
                 return "Error: expression is required";
             }
-            // 使用 Luau 安全地计算数学表达式
-            json result = script_engine_->call_function("eval_expr", json::array({expr}));
+            // 使用 LuauEngine::evaluate_expression 安全求值
+            // 内部将表达式编译为 Luau 字节码并在沙箱中执行，无副作用
+            json result = script_engine_->evaluate_expression(expr);
             if (result.contains("error")) {
-                // 通过 load 尝试直接求值作为后备方案
-                std::string code = "return " + expr;
-                script_engine_->load_string("__calculator__", code);
-                return "Calculator result: " + expr;
+                return "Calculator error: " + result["error"].get<std::string>();
+            }
+            // 数值结果直接返回，其他类型序列化为字符串
+            if (result.is_number()) {
+                return std::to_string(result.get<double>());
             }
             return result.dump();
         }
@@ -120,11 +122,14 @@ std::string AgentLoop::run(const std::string& user_input) {
             return "Error: failed to get response from API";
         }
 
+        // 提取 reasoning_content（DeepSeek thinking mode 要求回传）
+        std::string reasoning = extract_reasoning(response);
+
         // 检查是否需要停止
         if (should_stop(response)) {
             std::string text = extract_text(response);
             if (!text.empty()) {
-                conversation_.add_assistant_msg(text);
+                conversation_.add_assistant_msg(text, "", "", {}, reasoning);
             }
             return text;
         }
@@ -140,8 +145,9 @@ std::string AgentLoop::run(const std::string& user_input) {
             Logger::instance().info("AgentLoop: tool_use detected: %s", tool_name.c_str());
 
             // 将 assistant 消息（含 tool_use）写入对话历史
+            // reasoning_content 必须回传，否则 DeepSeek API 返回 400 错误
             std::string assistant_text = extract_text(response);
-            conversation_.add_assistant_msg(assistant_text, tool_name, tool_id, tool_input);
+            conversation_.add_assistant_msg(assistant_text, tool_name, tool_id, tool_input, reasoning);
 
             // 执行工具
             std::string tool_result = tool_registry_.call(tool_name, tool_input);
@@ -155,7 +161,7 @@ std::string AgentLoop::run(const std::string& user_input) {
             // 纯文本响应 — agent 完成
             std::string text = extract_text(response);
             if (!text.empty()) {
-                conversation_.add_assistant_msg(text);
+                conversation_.add_assistant_msg(text, "", "", {}, reasoning);
             }
             return text;
         }
@@ -264,6 +270,17 @@ std::string AgentLoop::extract_text(const json& response) const {
             }
         }
         return text;
+    }
+    return "";
+}
+
+std::string AgentLoop::extract_reasoning(const json& response) const {
+    json msg = get_message_from_response(response);
+
+    // DeepSeek thinking mode 在 message 中返回 reasoning_content 字段
+    if (msg.contains(constants::JSON_REASONING_CONTENT) &&
+        msg[constants::JSON_REASONING_CONTENT].is_string()) {
+        return msg[constants::JSON_REASONING_CONTENT].get<std::string>();
     }
     return "";
 }

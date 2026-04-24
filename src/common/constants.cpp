@@ -75,6 +75,7 @@ const std::string JSON_INPUT_SCHEMA("input_schema");
 const std::string JSON_INPUT("input");
 const std::string JSON_ID("id");
 const std::string JSON_TOOL_USE_ID("tool_use_id");
+const std::string JSON_TOOL_CALL_ID("tool_call_id");
 const std::string JSON_STOP_REASON("stop_reason");
 const std::string JSON_PROPERTIES("properties");
 const std::string JSON_REQUIRED("required");
@@ -89,6 +90,7 @@ const std::string JSON_MESSAGE("message");
 const std::string JSON_FINISH_REASON("finish_reason");
 const std::string JSON_DELTA("delta");
 const std::string JSON_INDEX("index");
+const std::string JSON_REASONING_CONTENT("reasoning_content");
 
 // ============================================================================
 // JSON 值

@@ -1,0 +1,15 @@
+
+要求
+1. 完成后构建并运行、测试，直到全部成功
+2. 生成完整的修改记录文档,修改记录文档放changelog目录下；
+3. 代码必须加上详细注释
+
+请修复下面问题：
+[2026-04-24 18:01:47] [INFO] AgentLoop: starting with user input, 1 tools registered
+[2026-04-24 18:01:51] [INFO] AgentLoop: tool_use detected: calculator
+[2026-04-24 18:01:51] [ERROR] LuauEngine: function "eval_expr" not found
+[2026-04-24 18:01:51] [INFO] LuauEngine: loaded script "__calculator__"
+[2026-04-24 18:01:52] [ERROR] AnthropicClient: API error 400 from https://api.deepseek.com/anthropic/chat/completions: {"error":{"message":"Failed to deserialize the JSON body into the target type: messages[2]: missing field `tool_call_id` at line 1 column 354","type":"invalid_request_error","param":null,"code":"invalid_request_error"}}嗑O邩
+[2026-04-24 18:01:52] [ERROR] AgentLoop: empty response from API
+
+Error: failed to get response from API

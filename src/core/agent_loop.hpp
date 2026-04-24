@@ -46,6 +46,7 @@ private:
     bool has_tool_use(const nlohmann::json& response) const;
     nlohmann::json extract_tool_use(const nlohmann::json& response) const;
     std::string extract_text(const nlohmann::json& response) const;
+    std::string extract_reasoning(const nlohmann::json& response) const;
     bool should_stop(const nlohmann::json& response) const;
 
     AnthropicClient api_client_;

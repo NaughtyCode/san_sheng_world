@@ -154,6 +154,56 @@ json LuauEngine::call_function(const std::string& name, const json& args) {
     return result;
 }
 
+json LuauEngine::evaluate_expression(const std::string& expr) {
+    if (!L_) {
+        Logger::instance().error("LuauEngine: not initialized");
+        return json{{"error", "engine not initialized"}};
+    }
+
+    if (expr.empty()) {
+        return json{{"error", "empty expression"}};
+    }
+
+    // 构造 "return <expr>" 语句，编译为字节码后安全执行
+    std::string code = "return " + expr;
+
+    lua_CompileOptions options = {};
+    options.optimizationLevel = 1;
+    options.debugLevel = 1;
+
+    size_t bytecode_size = 0;
+    char* bytecode = luau_compile(code.c_str(), code.size(), &options, &bytecode_size);
+    if (!bytecode) {
+        Logger::instance().error("LuauEngine: expression compilation failed: %s", expr.c_str());
+        return json{{"error", "invalid expression: " + expr}};
+    }
+
+    int load_result = luau_load(L_, "=eval", bytecode, bytecode_size, 0);
+    std::free(bytecode);
+
+    if (load_result != 0) {
+        const char* err = lua_tostring(L_, -1);
+        std::string err_str = err ? err : "unknown error";
+        Logger::instance().error("LuauEngine: expression load failed: %s", err_str.c_str());
+        lua_pop(L_, 1);
+        return json{{"error", err_str}};
+    }
+
+    // pcall 执行，接收 1 个返回值
+    int status = lua_pcall(L_, 0, 1, 0);
+    if (status != LUA_OK && status != 0) {
+        const char* err = lua_tostring(L_, -1);
+        std::string err_str = err ? err : "unknown error";
+        Logger::instance().error("LuauEngine: expression execution failed: %s", err_str.c_str());
+        lua_pop(L_, 1);
+        return json{{"error", err_str}};
+    }
+
+    // 提取返回值
+    json result = pop_json_value();
+    return result;
+}
+
 void LuauEngine::register_cpp_function(const std::string& name,
                                         std::function<json(const json&)> handler) {
     if (!L_) return;

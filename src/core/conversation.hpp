@@ -16,7 +16,8 @@ public:
     void add_assistant_msg(const std::string& content,
                            const std::string& tool_name = "",
                            const std::string& tool_id = "",
-                           const json& tool_input = {});
+                           const json& tool_input = {},
+                           const std::string& reasoning_content = "");
     void add_tool_result(const std::string& tool_call_id,
                          const std::string& result);
 

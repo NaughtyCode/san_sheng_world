@@ -75,7 +75,8 @@ extern const std::string JSON_DESCRIPTION;    // 工具描述
 extern const std::string JSON_INPUT_SCHEMA;   // 工具输入 schema
 extern const std::string JSON_INPUT;          // 工具输入
 extern const std::string JSON_ID;             // tool_use id
-extern const std::string JSON_TOOL_USE_ID;    // tool_result 中的 tool_use_id
+extern const std::string JSON_TOOL_USE_ID;    // tool_result 中的 tool_use_id（Anthropic 格式）
+extern const std::string JSON_TOOL_CALL_ID;   // tool 消息中的 tool_call_id（OpenAI 格式）
 extern const std::string JSON_STOP_REASON;    // stop_reason 字段
 extern const std::string JSON_PROPERTIES;     // JSON Schema properties
 extern const std::string JSON_REQUIRED;       // JSON Schema required
@@ -90,6 +91,7 @@ extern const std::string JSON_MESSAGE;        // OpenAI 响应 choice 中的 mes
 extern const std::string JSON_FINISH_REASON;  // OpenAI 响应中的 finish_reason 字段
 extern const std::string JSON_DELTA;          // OpenAI streaming chunk 中的 delta
 extern const std::string JSON_INDEX;          // OpenAI choice 的索引字段
+extern const std::string JSON_REASONING_CONTENT; // DeepSeek thinking mode 推理内容字段
 
 // ============================================================================
 // JSON 值 — 固定的字符串取值

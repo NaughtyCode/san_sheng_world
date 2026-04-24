@@ -109,12 +109,17 @@ json AnthropicClient::messages_to_api_format(const std::vector<Message>& msgs) {
         if (m.role == VALUE_TOOL) {
             // OpenAI 格式 — tool 角色消息
             // tool 消息的 content 为纯字符串，tool_call_id 与 role 平级
-            msg[JSON_TOOL_USE_ID] = m.tool_call_id;
+            msg[JSON_TOOL_CALL_ID] = m.tool_call_id;
             msg[JSON_CONTENT] = m.content;
         } else if (m.role == VALUE_ASSISTANT && !m.tool_name.empty()) {
             // OpenAI 格式 — assistant 消息包含 tool_calls 数组
             // content 为纯字符串（可为空），tool_calls 为数组
             msg[JSON_CONTENT] = m.content.empty() ? "" : m.content;
+
+            // DeepSeek thinking mode：必须将 reasoning_content 回传
+            if (!m.reasoning_content.empty()) {
+                msg[JSON_REASONING_CONTENT] = m.reasoning_content;
+            }
 
             json tool_call;
             tool_call[JSON_ID] = m.tool_call_id;
@@ -130,6 +135,11 @@ json AnthropicClient::messages_to_api_format(const std::vector<Message>& msgs) {
             // 纯文本消息 — user / assistant（不含 tool_use）均为此分支
             // OpenAI 格式中 content 为纯字符串
             msg[JSON_CONTENT] = m.content;
+
+            // DeepSeek thinking mode：即使是纯文本 assistant 消息也需要回传 reasoning_content
+            if (m.role == VALUE_ASSISTANT && !m.reasoning_content.empty()) {
+                msg[JSON_REASONING_CONTENT] = m.reasoning_content;
+            }
         }
 
         arr.push_back(msg);
