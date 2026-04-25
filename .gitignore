@@ -5,3 +5,4 @@ external/json
 external/luau
 external/spdlog
 logs/app.log
+history.txt
