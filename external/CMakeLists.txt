@@ -10,5 +10,8 @@ target_link_libraries(httplib INTERFACE OpenSSL::SSL OpenSSL::Crypto)
 add_library(nlohmann_json INTERFACE)
 target_include_directories(nlohmann_json INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/json/include)
 
+# spdlog (Header-only, compiled library for faster builds)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/spdlog EXCLUDE_FROM_ALL)
+
 # Luau
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/luau EXCLUDE_FROM_ALL)

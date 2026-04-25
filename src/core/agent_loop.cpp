@@ -104,11 +104,11 @@ std::string AgentLoop::run(const std::string& user_input) {
     using namespace constants;
     conversation_.add_user_msg(user_input);
 
-    Logger::instance().info("AgentLoop: starting with user input, %zu tools registered",
-                             tool_registry_.get_definitions().size());
+    LOG_INFO("AgentLoop: starting with user input, {} tools registered",
+             tool_registry_.get_definitions().size());
 
     for (int iter = 0; iter < max_iterations_; ++iter) {
-        Logger::instance().debug("AgentLoop: iteration %d/%d", iter + 1, max_iterations_);
+        LOG_DEBUG("AgentLoop: iteration {}/{}", iter + 1, max_iterations_);
 
         // 构造 API 请求
         auto response = api_client_.messages_create(
@@ -118,7 +118,7 @@ std::string AgentLoop::run(const std::string& user_input) {
             max_tokens_);
 
         if (response.empty()) {
-            Logger::instance().error("AgentLoop: empty response from API");
+            LOG_ERROR("AgentLoop: empty response from API");
             return "Error: failed to get response from API";
         }
 
@@ -142,7 +142,7 @@ std::string AgentLoop::run(const std::string& user_input) {
             std::string tool_name = tool_use.value(JSON_NAME, "");
             json tool_input = tool_use.value(JSON_INPUT, json::object());
 
-            Logger::instance().info("AgentLoop: tool_use detected: %s", tool_name.c_str());
+            LOG_INFO("AgentLoop: tool_use detected: {}", tool_name);
 
             // 将 assistant 消息（含 tool_use）写入对话历史
             // reasoning_content 必须回传，否则 DeepSeek API 返回 400 错误
@@ -155,8 +155,8 @@ std::string AgentLoop::run(const std::string& user_input) {
             // 将 tool_result 写入对话历史
             conversation_.add_tool_result(tool_id, tool_result);
 
-            Logger::instance().debug("AgentLoop: tool result: %s",
-                                      tool_result.substr(0, 200).c_str());
+            LOG_DEBUG("AgentLoop: tool result: {}",
+                      tool_result.substr(0, 200));
         } else {
             // 纯文本响应 — agent 完成
             std::string text = extract_text(response);
@@ -167,7 +167,7 @@ std::string AgentLoop::run(const std::string& user_input) {
         }
     }
 
-    Logger::instance().warning("AgentLoop: max iterations (%d) reached", max_iterations_);
+    LOG_WARN("AgentLoop: max iterations ({}) reached", max_iterations_);
     return "Agent stopped: maximum iterations reached.";
 }
 

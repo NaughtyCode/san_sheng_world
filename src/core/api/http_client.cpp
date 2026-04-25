@@ -33,12 +33,12 @@ HttpResponse HttpClient::post(const std::string& path, const std::string& body) 
         } else {
             resp.status = -1;
             resp.body = "HTTP request failed";
-            Logger::instance().error("HTTP POST failed: %s", httplib::to_string(res.error()).c_str());
+            LOG_ERROR("HTTP POST failed: {}", httplib::to_string(res.error()));
         }
     } catch (const std::exception& e) {
         resp.status = -1;
         resp.body = std::string("HTTP error: ") + e.what();
-        Logger::instance().error("HTTP POST exception: %s", e.what());
+        LOG_ERROR("HTTP POST exception: {}", e.what());
     }
     return resp;
 }
@@ -67,7 +67,7 @@ HttpResponse HttpClient::get(const std::string& path) {
     } catch (const std::exception& e) {
         resp.status = -1;
         resp.body = std::string("HTTP error: ") + e.what();
-        Logger::instance().error("HTTP GET exception: %s", e.what());
+        LOG_ERROR("HTTP GET exception: {}", e.what());
     }
     return resp;
 }

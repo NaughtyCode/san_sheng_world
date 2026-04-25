@@ -26,16 +26,16 @@ json AnthropicClient::messages_create(const std::string& model,
 
     // 构造完整 URL 用于诊断输出
     std::string full_url = base_url_ + constants::API_PATH_MESSAGES;
-    Logger::instance().debug("AnthropicClient: POST %s, model=%s, msg_count=%zu",
-                              full_url.c_str(), model.c_str(), messages.size());
+    LOG_DEBUG("AnthropicClient: POST {}, model={}, msg_count={}",
+              full_url, model, messages.size());
 
     // OpenAI 兼容端点使用 Bearer 认证方式，但 DeepSeek 同时支持 x-api-key 和 Authorization 头
     http_.set_header(constants::API_HEADER_ANTHROPIC_VERSION, api_version_);
     auto resp = http_.post(constants::API_PATH_MESSAGES, body.dump());
 
     if (resp.status == -1) {
-        Logger::instance().error("AnthropicClient: HTTP connection failed (url=%s): %s",
-                                  full_url.c_str(), resp.body.c_str());
+        LOG_ERROR("AnthropicClient: HTTP connection failed (url={}): {}",
+                  full_url, resp.body);
         return json::object();
     }
 
@@ -52,15 +52,15 @@ json AnthropicClient::messages_create(const std::string& model,
             case 500: hint = " [Internal Server Error — API-side issue]"; break;
             default: break;
         }
-        Logger::instance().error("AnthropicClient: API error %d from %s: %s%s",
-                                  resp.status, full_url.c_str(), resp.body.c_str(), hint);
+        LOG_ERROR("AnthropicClient: API error {} from {}: {}{}",
+                  resp.status, full_url, resp.body, hint);
         return json::object();
     }
 
     try {
         return json::parse(resp.body);
     } catch (const json::parse_error& e) {
-        Logger::instance().error("AnthropicClient: JSON parse error: %s", e.what());
+        LOG_ERROR("AnthropicClient: JSON parse error: {}", e.what());
         return json::object();
     }
 }

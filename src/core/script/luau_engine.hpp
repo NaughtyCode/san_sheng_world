@@ -36,6 +36,19 @@ public:
      */
     json evaluate_expression(const std::string& expr);
 
+    /**
+     * @brief 将新日志 API 注册到 Luau 虚拟机中。
+     *
+     * 注册后 Luau 脚本可调用以下全局函数：
+     *   - log_debug(msg)  : 输出 DEBUG 级别日志
+     *   - log_info(msg)   : 输出 INFO 级别日志
+     *   - log_warn(msg)   : 输出 WARN 级别日志
+     *   - log_error(msg)  : 输出 ERROR 级别日志
+     *
+     * 所有日志自动经过 spdlog 输出到控制台（彩色）和文件。
+     */
+    void register_log_api();
+
 private:
     void sandbox_environment();
     void push_json_value(const json& value);

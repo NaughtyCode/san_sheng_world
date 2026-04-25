@@ -14,45 +14,43 @@ int main(int argc, char* argv[]) {
     using namespace constants;
 
     // ==========================================================================
-    // 1. 初始化配置 — 从环境变量加载
+    // 1. 初始化新日志系统（基于 spdlog）
+    //    读取环境变量配置日志级别和输出文件
+    // ==========================================================================
+    LogManager::instance().init("log_config.json", "APP_LOG_FILE");
+
+    // ==========================================================================
+    // 2. 初始化配置 — 从环境变量加载
     // ==========================================================================
     Config config;
     config.load_from_env();
 
     // ==========================================================================
-    // 2. 设置日志
+    // 3. 根据配置动态调整日志级别
     // ==========================================================================
-    Logger& log = Logger::instance();
     std::string log_level = config.get<std::string>(CONFIG_LOG_LEVEL, DEFAULT_LOG_LEVEL);
-    std::string log_file = config.get<std::string>(CONFIG_LOG_FILE, "");
-
-    if (log_level == "debug") log.set_level(LogLevel::Debug);
-    else if (log_level == "warning") log.set_level(LogLevel::Warning);
-    else if (log_level == "error") log.set_level(LogLevel::Error);
-    else log.set_level(LogLevel::Info);
-
-    if (!log_file.empty()) {
-        log.set_file(log_file);
-    }
-
-    log.info("AI Agent starting");
+    spdlog::level::level_enum lvl = spdlog::level::from_str(log_level);
+    LogManager::instance().set_level("default", lvl);
 
     // ==========================================================================
-    // 3. 获取认证凭证 — 优先 ANTHROPIC_API_KEY，其次 ANTHROPIC_AUTH_TOKEN
+    // 4. 获取认证凭证 — 优先 ANTHROPIC_API_KEY，其次 ANTHROPIC_AUTH_TOKEN
     // ==========================================================================
     std::string api_key = config.get<std::string>(CONFIG_API_KEY, "");
     if (api_key.empty()) {
         api_key = config.get<std::string>(CONFIG_AUTH_TOKEN, "");
     }
     if (api_key.empty()) {
-        std::cerr << "Error: Neither " << ENV_ANTHROPIC_API_KEY
-                  << " nor " << ENV_ANTHROPIC_AUTH_TOKEN
-                  << " is set. Export one or set in config." << std::endl;
+        // 严重错误：缺少 API 密钥，使用日志系统输出后退出
+        LOG_CRITICAL("Missing API key. Set {} or {} environment variable.",
+                      ENV_ANTHROPIC_API_KEY, ENV_ANTHROPIC_AUTH_TOKEN);
+        LogManager::instance().shutdown();
         return 1;
     }
 
+    LOG_INFO("AI Agent starting");
+
     // ==========================================================================
-    // 4. 解析命令行参数
+    // 5. 解析命令行参数
     // ==========================================================================
     bool interactive = true;
     std::string initial_prompt;
@@ -72,7 +70,7 @@ int main(int argc, char* argv[]) {
     }
 
     // ==========================================================================
-    // 5. 创建 Agent 并配置
+    // 6. 创建 Agent 并配置
     // ==========================================================================
     AgentLoop agent;
     agent.set_api_key(api_key);
@@ -96,29 +94,33 @@ int main(int argc, char* argv[]) {
     (void)custom_opt;
 
     // ==========================================================================
-    // 6. 加载内置工具
+    // 7. 加载内置工具
     // ==========================================================================
     agent.load_builtin_tools();
 
-    log.info("Agent initialized with model: %s", model.c_str());
+    LOG_INFO("Agent initialized with model: {}", model);
 
     // ==========================================================================
-    // 7. 输出模型完整信息
+    // 8. 输出模型完整信息（同时输出到控制台和日志）
     // ==========================================================================
-    std::cout << agent.get_model_info() << std::endl;
+    std::string model_info = agent.get_model_info();
+    LOG_INFO("Model info:\n{}", model_info);
+    std::cout << model_info << std::endl;
 
     // ==========================================================================
-    // 8. 一次性提问模式（如果提供了命令行提示词）
+    // 9. 一次性提问模式（如果提供了命令行提示词）
     // ==========================================================================
     if (!initial_prompt.empty()) {
+        LOG_INFO("Running single prompt mode");
         std::string response = agent.run(utils::trim(initial_prompt));
         std::cout << response << std::endl;
     }
 
     // ==========================================================================
-    // 9. 交互式 REPL 模式
+    // 10. 交互式 REPL 模式
     // ==========================================================================
     if (interactive) {
+        LOG_INFO("Entering interactive REPL mode");
         std::cout << "AI Agent ready. Type 'exit' to quit." << std::endl;
         std::string line;
         while (true) {
@@ -133,6 +135,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    log.info("AI Agent shutting down");
+    LOG_INFO("AI Agent shutting down");
+    LogManager::instance().shutdown();
     return 0;
 }

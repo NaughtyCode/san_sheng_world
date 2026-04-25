@@ -1,0 +1,8 @@
+{
+  "global_level": "info",
+  "log_file": {
+    "path": "logs/app.log",
+    "rotation_size_mb": 100,
+    "rotation_files": 10
+  }
+}

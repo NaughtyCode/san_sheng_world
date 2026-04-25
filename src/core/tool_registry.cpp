@@ -13,20 +13,20 @@ void ToolRegistry::register_tool(const std::string& name,
     entry.input_schema = input_schema;
     entry.handler = std::move(handler);
     tools_[name] = std::move(entry);
-    Logger::instance().info("ToolRegistry: registered tool \"%s\"", name.c_str());
+    LOG_INFO("ToolRegistry: registered tool \"{}\"", name);
 }
 
 std::string ToolRegistry::call(const std::string& name, const json& args) {
     auto it = tools_.find(name);
     if (it == tools_.end()) {
-        Logger::instance().warning("ToolRegistry: tool \"%s\" not found", name.c_str());
+        LOG_WARN("ToolRegistry: tool \"{}\" not found", name);
         return "Error: tool not found";
     }
-    Logger::instance().debug("ToolRegistry: calling tool \"%s\"", name.c_str());
+    LOG_DEBUG("ToolRegistry: calling tool \"{}\"", name);
     try {
         return it->second.handler(args);
     } catch (const std::exception& e) {
-        Logger::instance().error("ToolRegistry: tool \"%s\" failed: %s", name.c_str(), e.what());
+        LOG_ERROR("ToolRegistry: tool \"{}\" failed: {}", name, e.what());
         return std::string("Error: ") + e.what();
     }
 }
