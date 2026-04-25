@@ -1,0 +1,76 @@
+功能需求：替换当前的控台输入处理逻辑
+
+要求：
+1. 代码独立到一个单独的模块中，你帮取一个合理的有意思的名字
+2. 处理代码要结构化，并且要非常完善，考虑好各种边界处理
+3. 完成后构建并运行、测试，直到全部成功
+4. 生成完整的修改记录文档,修改记录文档放changelog目录下
+5. 代码必须加上详细注释
+
+**方案：**
+***基于 Boost.Nowide + cpp-linenoise 的跨平台控制台输入***
+
+### 概述
+
+该方案解决 C++ 控制台应用中的三个核心痛点：
+
+-   **跨平台 UTF-8 编码**：避免中文等非 ASCII 字符在 Windows/Linux/macOS 下的乱码。
+-   **交互式输入体验**：提供行编辑、历史记录、自动补全等功能。
+-   **多行输入支持**：允许用户输入包含换行的文本块。
+
+方案组合两个轻量级开源库：
+
+-   **Boost.Nowide**：负责底层 I/O 与编码转换，保证 `cin`/`cout` 始终按 UTF-8 工作。
+-   **cpp-linenoise**：纯头文件的 readline 替代库，提供用户友好的行编辑与多行模式。
+
+### 库信息
+
+| 组件  | 许可证 | 集成方式 | 功能  |
+| --- | --- | --- | --- |
+| Boost.Nowide | Boost (极宽松) | 头文件或编译库 | 统一控制台流为 UTF-8，屏蔽 Windows 原生 UTF-16 差异 |
+| cpp-linenoise | BSD | 单头文件 `linenoise.hpp` | 行编辑、历史记录、多行模式、自动补全、提示 |
+
+### 三方库集成步骤
+1. 库已经全部准备好,如下：
+	a. .\external\cpp-linenoise
+	b. .\external\nowide
+
+### 完整示例
+#include <iostream>
+#include <boost/nowide/iostream.hpp>
+#include "linenoise.hpp"
+int main() {
+    // 使用 boost::nowide 替代 std 流，保证 UTF-8 编码
+    namespace io \= boost::nowide;
+    io::cout << "跨平台交互控制台 (按 Ctrl+D 或输入 exit 退出)" << std::endl;
+    // 启用多行模式：按 Enter 换行，连续两次 Enter 提交
+    linenoise::SetMultiLine(true);
+    // 加载历史记录
+    linenoise::LoadHistory("history.txt");
+    std::string line;
+    while (true) {
+        bool quit \= linenoise::Readline("> ", line);
+        if (quit || line \== "exit")
+            break;
+        io::cout << "你输入了: " << line << std::endl;
+        linenoise::AddHistory(line.c\_str());
+    }
+    linenoise::SaveHistory("history.txt");
+    return 0;
+}
+
+-   在 Windows 下需使用支持 UTF-8 的终端（如 Windows Terminal），或通过 `chcp 65001` 切换代码页。
+-   多行模式下，空行（连续两次回车）提交输入；输入 `exit` 退出。
+
+### 方案要点
+
+-   **编码可靠性**：`Boost.Nowide` 在 Windows 内部将 UTF-8 转换为 `wchar_t` 接口，同时保持代码完全可移植。
+-   **体验扩展**：可添加补全回调 `linenoise::SetCompletionCallback`，实现命令补全。
+-   **轻量集成**：`cpp-linenoise` 仅需一个头文件，无额外依赖。
+-   **局限性**：`cpp-linenoise` 不支持语法高亮等高级特性；若需更丰富 REPL 体验，可替换为 `replxx`。
+
+### 适用场景
+
+-   跨平台的 CLI 工具、REPL 环境
+-   需要录入多行文本（代码片段、配置等）的控制台程序
+-   必须正确处理中、日、韩等文字的输入

@@ -4,3 +4,4 @@ external/cpp-httplib
 external/json
 external/luau
 external/spdlog
+logs/app.log

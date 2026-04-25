@@ -2,16 +2,22 @@
 #include <string>
 #include <cstdlib>
 
+#include <boost/nowide/iostream.hpp>  // boost::nowide::cout — 跨平台 UTF-8 控制台输出
+
 #include "logger.hpp"
 #include "config.hpp"
 #include "utils.hpp"
 #include "agent_loop.hpp"
 #include "constants.hpp"
+#include "console_kit.hpp"  // 跨平台控制台输入（linenoise + nowide）
 
 using namespace agent;
 
 int main(int argc, char* argv[]) {
     using namespace constants;
+
+    // 便捷别名：使用 nowide 流替代 std 流，保证 UTF-8 编码在 Windows 下正确
+    namespace io = boost::nowide;
 
     // ==========================================================================
     // 1. 初始化新日志系统（基于 spdlog）
@@ -101,11 +107,11 @@ int main(int argc, char* argv[]) {
     LOG_INFO("Agent initialized with model: {}", model);
 
     // ==========================================================================
-    // 8. 输出模型完整信息（同时输出到控制台和日志）
+    // 8. 输出模型完整信息（使用 nowide::cout 保证 UTF-8 编码）
     // ==========================================================================
     std::string model_info = agent.get_model_info();
     LOG_INFO("Model info:\n{}", model_info);
-    std::cout << model_info << std::endl;
+    io::cout << model_info << std::endl;
 
     // ==========================================================================
     // 9. 一次性提问模式（如果提供了命令行提示词）
@@ -113,26 +119,58 @@ int main(int argc, char* argv[]) {
     if (!initial_prompt.empty()) {
         LOG_INFO("Running single prompt mode");
         std::string response = agent.run(utils::trim(initial_prompt));
-        std::cout << response << std::endl;
+        io::cout << response << std::endl;
     }
 
     // ==========================================================================
-    // 10. 交互式 REPL 模式
+    // 10. 交互式 REPL 模式 — 使用 ConsoleKit（linenoise + nowide）
     // ==========================================================================
     if (interactive) {
         LOG_INFO("Entering interactive REPL mode");
-        std::cout << "AI Agent ready. Type 'exit' to quit." << std::endl;
+
+        // 初始化控制台输入模块：启用多行模式 + 加载历史记录
+        ConsoleKit::init("history.txt");
+
+        io::cout << "AI Agent ready. Type 'exit' to quit." << std::endl;
+        io::cout << "(Multi-line: Enter to break, double Enter to submit)" << std::endl;
+
         std::string line;
         while (true) {
-            std::cout << "\n> ";
-            if (!std::getline(std::cin, line)) break;
-            line = utils::trim(line);
-            if (line.empty()) continue;
-            if (line == "exit" || line == "quit") break;
+            bool quit = false;
+            // 使用 ConsoleKit::readline 进行行编辑（支持 UTF-8、历史、多行）
+            if (!ConsoleKit::readline("agent> ", line, quit)) {
+                // 无法恢复的 I/O 错误
+                break;
+            }
 
-            std::string response = agent.run(line);
-            std::cout << "\n" << response << std::endl;
+            if (quit) {
+                // EOF（Ctrl+D）或 Ctrl+C
+                io::cout << std::endl;
+                break;
+            }
+
+            // 裁剪首尾空白
+            std::string trimmed = utils::trim(line);
+
+            if (trimmed.empty()) {
+                // 空行：多行模式下的提交信号，或单行模式下跳过
+                continue;
+            }
+
+            if (ConsoleKit::is_quit_command(trimmed)) {
+                break;
+            }
+
+            // 将非空有效输入加入历史
+            ConsoleKit::add_history(line);
+
+            // 执行 Agent 调用
+            std::string response = agent.run(trimmed);
+            io::cout << "\n" << response << std::endl;
         }
+
+        // 保存历史并清理
+        ConsoleKit::shutdown();
     }
 
     LOG_INFO("AI Agent shutting down");

@@ -7,14 +7,15 @@ claude --dangerously-skip-permissions
 
 --------------------- Begin of Task --------------------------
 
-1. 请按照 ./final_requirements.md 中的要求执行任务
-2. 增加功能: 启动时输出当前使用模型的全部信息，包括URL
-3. 请按照 ./fixes/issues_2.txt 中的要求执行任务
-4. 请按 ./fixes/issues_3.txt 中的要求执行任务
-5. 请按 ./fixes/issues_4.txt 中的要求执行任务
-6. 请按 ./fixes/issues_5.txt 中的要求执行任务
-7. 请按 ./fixes/issues_6.txt 中的要求执行任务
-8. 请按 ./fixes/issues_7.txt 中的要求执行任务
-9. 请按 ./fixes/issues_8.txt 中的要求执行任务
+1.  请按 ./final_requirements.md 中的要求执行任务
+2.  增加功能: 启动时输出当前使用模型的全部信息，包括URL
+3.  请按照 ./fixes/issues_2.txt 中的要求执行任务
+4.  请按 ./fixes/issues_3.txt 中的要求执行任务
+5.  请按 ./fixes/issues_4.txt 中的要求执行任务
+6.  请按 ./fixes/issues_5.txt 中的要求执行任务
+7.  请按 ./fixes/issues_6.txt 中的要求执行任务
+8.  请按 ./fixes/issues_7.txt 中的要求执行任务
+9.  请按 ./fixes/issues_8.txt 中的要求执行任务
+10. 请按 ./fixes/issues_9.txt 中的要求执行任务
 
 --------------------- End of Task --------------------------
