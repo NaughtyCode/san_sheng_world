@@ -1022,7 +1022,7 @@ HANDLE hOut;
 HANDLE hIn;
 DWORD consolemodeIn = 0;
 
-inline int win32read(int *c) {
+inline int win32read(char* cbuf) {
     DWORD foo;
     INPUT_RECORD b;
     KEY_EVENT_RECORD e;
@@ -1035,49 +1035,50 @@ inline int win32read(int *c) {
         if (b.EventType == KEY_EVENT && b.Event.KeyEvent.bKeyDown) {
 
             e = b.Event.KeyEvent;
-            *c = b.Event.KeyEvent.uChar.AsciiChar;
+            WCHAR wc = e.uChar.UnicodeChar;
+            char  ascii = e.uChar.AsciiChar;
 
             altgr = e.dwControlKeyState & (LEFT_CTRL_PRESSED | RIGHT_ALT_PRESSED);
 
             if (e.dwControlKeyState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED) && !altgr) {
 
                 /* Ctrl+Key */
-                switch (*c) {
+                switch (ascii) {
                     case 'D':
-                        *c = 4;
+                        cbuf[0] = 4;
                         return 1;
                     case 'C':
-                        *c = 3;
+                        cbuf[0] = 3;
                         return 1;
                     case 'H':
-                        *c = 8;
+                        cbuf[0] = 8;
                         return 1;
                     case 'T':
-                        *c = 20;
+                        cbuf[0] = 20;
                         return 1;
                     case 'B': /* ctrl-b, left_arrow */
-                        *c = 2;
+                        cbuf[0] = 2;
                         return 1;
                     case 'F': /* ctrl-f right_arrow*/
-                        *c = 6;
+                        cbuf[0] = 6;
                         return 1;
                     case 'P': /* ctrl-p up_arrow*/
-                        *c = 16;
+                        cbuf[0] = 16;
                         return 1;
                     case 'N': /* ctrl-n down_arrow*/
-                        *c = 14;
+                        cbuf[0] = 14;
                         return 1;
                     case 'U': /* Ctrl+u, delete the whole line. */
-                        *c = 21;
+                        cbuf[0] = 21;
                         return 1;
                     case 'K': /* Ctrl+k, delete from current to end of line. */
-                        *c = 11;
+                        cbuf[0] = 11;
                         return 1;
                     case 'A': /* Ctrl+a, go to the start of the line */
-                        *c = 1;
+                        cbuf[0] = 1;
                         return 1;
                     case 'E': /* ctrl+e, go to the end of the line */
-                        *c = 5;
+                        cbuf[0] = 5;
                         return 1;
                 }
 
@@ -1087,37 +1088,46 @@ inline int win32read(int *c) {
                 switch (e.wVirtualKeyCode) {
 
                     case VK_ESCAPE: /* ignore - send ctrl-c, will return -1 */
-                        *c = 3;
+                        cbuf[0] = 3;
                         return 1;
                     case VK_RETURN:  /* enter */
-                        *c = 13;
+                        cbuf[0] = 13;
                         return 1;
                     case VK_LEFT:   /* left */
-                        *c = 2;
+                        cbuf[0] = 2;
                         return 1;
                     case VK_RIGHT: /* right */
-                        *c = 6;
+                        cbuf[0] = 6;
                         return 1;
                     case VK_UP:   /* up */
-                        *c = 16;
+                        cbuf[0] = 16;
                         return 1;
                     case VK_DOWN:  /* down */
-                        *c = 14;
+                        cbuf[0] = 14;
                         return 1;
                     case VK_HOME:
-                        *c = 1;
+                        cbuf[0] = 1;
                         return 1;
                     case VK_END:
-                        *c = 5;
+                        cbuf[0] = 5;
                         return 1;
                     case VK_BACK:
-                        *c = 8;
+                        cbuf[0] = 8;
                         return 1;
                     case VK_DELETE:
-                        *c = 4; /* same as Ctrl+D above */
+                        cbuf[0] = 4; /* same as Ctrl+D above */
                         return 1;
                     default:
-                        if (*c) return 1;
+                        // UTF-8 multi-byte characters via UnicodeChar
+                        if (wc != 0) {
+                            int len = WideCharToMultiByte(CP_UTF8, 0, &wc, 1, cbuf, 4, NULL, NULL);
+                            if (len > 0) return len;
+                        }
+                        // Pure ASCII printable
+                        if (ascii != 0) {
+                            cbuf[0] = ascii;
+                            return 1;
+                        }
                 }
             }
         }
@@ -1127,18 +1137,46 @@ inline int win32read(int *c) {
 }
 
 inline int win32_write(int fd, const void *buffer, unsigned int count) {
+    if (count == 0) return 0;
     if (fd == _fileno(stdout)) {
+        HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+        // 将 UTF-8 字节流转换为 UTF-16 后通过 WriteConsoleW 输出，
+        // 避免原 ansi::ParseAndPrintANSIString 逐字节强制转换为 WCHAR
+        // 导致中文等多字节 UTF-8 字符被拆散为乱码。
+        int wlen = MultiByteToWideChar(CP_UTF8, 0, (LPCCH)buffer, count, NULL, 0);
+        if (wlen <= 0) {
+            errno = EILSEQ;
+            return 0;
+        }
+        // 栈分配 4096 个 WCHAR，足以覆盖行编辑器的任何单次输出；
+        // 如果输出超大（极少见），回退到 _write。
+        WCHAR stackBuf[4096];
+        WCHAR* wbuf = (wlen <= 4096) ? stackBuf : new WCHAR[wlen];
+        MultiByteToWideChar(CP_UTF8, 0, (LPCCH)buffer, count, wbuf, wlen);
         DWORD bytesWritten = 0;
-        if (FALSE != ansi::ParseAndPrintANSIString(GetStdHandle(STD_OUTPUT_HANDLE), buffer, (DWORD)count, &bytesWritten)) {
-            return (int)bytesWritten;
+        BOOL ok = WriteConsoleW(h, wbuf, wlen, &bytesWritten, NULL);
+        if (wbuf != stackBuf) delete[] wbuf;
+        if (ok) {
+            return count;
         } else {
             errno = GetLastError();
             return 0;
         }
     } else if (fd == _fileno(stderr)) {
+        HANDLE h = GetStdHandle(STD_ERROR_HANDLE);
+        int wlen = MultiByteToWideChar(CP_UTF8, 0, (LPCCH)buffer, count, NULL, 0);
+        if (wlen <= 0) {
+            errno = EILSEQ;
+            return 0;
+        }
+        WCHAR stackBuf[4096];
+        WCHAR* wbuf = (wlen <= 4096) ? stackBuf : new WCHAR[wlen];
+        MultiByteToWideChar(CP_UTF8, 0, (LPCCH)buffer, count, wbuf, wlen);
         DWORD bytesWritten = 0;
-        if (FALSE != ansi::ParseAndPrintANSIString(GetStdHandle(STD_ERROR_HANDLE), buffer, (DWORD)count, &bytesWritten)) {
-            return (int)bytesWritten;
+        BOOL ok = WriteConsoleW(h, wbuf, wlen, &bytesWritten, NULL);
+        if (wbuf != stackBuf) delete[] wbuf;
+        if (ok) {
+            return count;
         } else {
             errno = GetLastError();
             return 0;
@@ -1708,6 +1746,18 @@ inline bool enableRawMode(int fd) {
         return false;
     };
 
+    // 启用 VT/ANSI 转义序列处理（Windows 10 1607+），
+    // 使得 linenoise 发出的 ANSI 转义序列（光标移动、清屏、颜色等）
+    // 由 Windows 控制台原生解释，绕过 ansi::ParseAndPrintANSIString 的手工解析。
+    consolemodeOut |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    if (!SetConsoleMode(hOut, consolemodeOut)) {
+        // VT 处理启用失败（Windows 10 1607 以下版本），
+        // 回退到 ansi::ParseAndPrintANSIString 手工 ANSI 解析路径。
+        consolemodeOut &= ~ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    }
+    // 设置控制台输出代码页为 UTF-8，确保 WriteConsoleA 正确编码非 ASCII 字符。
+    SetConsoleOutputCP(CP_UTF8);
+
     hIn = GetStdHandle(STD_INPUT_HANDLE);
     if (hIn == INVALID_HANDLE_VALUE) {
         CloseHandle(hOut);
@@ -1875,9 +1925,9 @@ inline int linenoiseState::completeLine(char *cbuf, int *c) {
 
             //nread = read(ifd_,&c,1);
 #ifdef _WIN32
-            nread = win32read(c);
-            if (nread == 1) {
-                cbuf[0] = *c;
+            nread = win32read(cbuf);
+            if (nread >= 1) {
+                *c = (unsigned char)cbuf[0];
             }
 #else
             nread = unicodeReadUTF8Char(ifd_,cbuf,c);
@@ -2200,9 +2250,9 @@ inline int linenoiseState::Edit()
         char seq[3];
 
 #ifdef _WIN32
-        nread = win32read(&c);
-        if (nread == 1) {
-            cbuf[0] = c;
+        nread = win32read(cbuf);
+        if (nread >= 1) {
+            c = (unsigned char)cbuf[0];
         }
 #else
         nread = unicodeReadUTF8Char(ifd_,cbuf,&c);

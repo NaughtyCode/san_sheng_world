@@ -1,169 +1,85 @@
-# Fixes Issue #9 — 替换控台输入处理逻辑（ConsoleKit 模块）
+# Fixes Issue #9 — 修复控制台中文输入/输出 + 输入阻塞问题
 
 ## 概述
 
-将 `main.cpp` 中的原始 `std::getline(std::cin)` 控制台输入替换为基于 **Boost.Nowide + cpp-linenoise** 的独立模块 **ConsoleKit**，解决跨平台 UTF-8 编码、交互式行编辑、多行输入三大痛点。
+修复基于 Boost.Nowide + cpp-linenoise 的控制台模块 **ConsoleKit** 中三个关键 Bug：
+1. **控制台无法输入**：`readline()` 中 nowide::cout 与 linenoise 冲突
+2. **无法输入中文**：`win32read` 使用 AsciiChar 丢弃非 ASCII 字符
+3. **中文显示乱码**：`win32_write` / `ansi::ParseAndPrintANSIString` 逐字节强转 WCHAR 拆散 UTF-8 序列
 
-## 旧架构问题
+## 修改文件
 
-- 输入使用 `std::getline(std::cin, line)`（`main.cpp` 第 127-135 行），无行编辑、历史记录、自动补全能力
-- Windows 下 `std::cin` 使用系统代码页（GBK），中文输入可能出现乱码
-- 不支持多行输入（代码片段、配置块等场景受限）
-- 输入处理逻辑嵌入 `main()` 函数中，无法复用
-- `external/cpp-linenoise/` 库已就绪但从未集成
+### 1. `src/common/console_kit.cpp` — 移除冲突的 nowide::cout 输出
 
-## 新架构
+**根因**：`readline()` 在调用 `linenoise::Readline()` 之前，先通过 `boost::nowide::cout << prompt` 输出提示符。nowide 内部的 `WriteConsoleW` 操作会干扰 linenoise 随后调用的 `enableRawMode()`（同样操作 `STD_OUTPUT_HANDLE`），导致 stdin 无法切换到原始模式，用户按键无法被 `ReadConsoleInput` 捕获。
 
-```
-src/common/
-├── console_kit.hpp    — ConsoleKit 类声明（跨平台控制台输入 API）
-└── console_kit.cpp    — ConsoleKit 实现（封装 linenoise + nowide）
+**修复**：删除 `readline()` 中的 `boost::nowide::cout << prompt; boost::nowide::cout.flush();` 两条语句。提示符由 `linenoise::Readline(prompt.c_str(), line)` 内部自行输出，无需 ConsoleKit 额外处理。
 
-external/
-├── cpp-linenoise/     — 头文件库（行编辑、历史、补全）
-├── nowide/            — Boost.Nowide（UTF-8 控制台 I/O）
-│   └── standalone_boost/ — 最小 Boost 配置桩头文件（消除 Boost 依赖）
-└── CMakeLists.txt     — 新增 linenoise + nowide_console 编译目标
-```
+### 2. `external/cpp-linenoise/linenoise.hpp` — 四处修改
 
-### 职责分离
+#### 2a. `win32read` 函数重写（中文输入）
 
-| 组件 | 职责 | 技术栈 |
-|------|------|--------|
-| `ConsoleKit` | 统一控制台输入输出 API，封装行编辑、历史、多行、编码 | cpp-linenoise + Boost.Nowide |
-| `linenoise` (INTERFACE) | 跨平台行编辑：光标移动、历史翻阅、Tab 补全 | 单头文件 `linenoise.hpp` |
-| `nowide_console` (STATIC) | Windows 下 UTF-8 ↔ UTF-16 转换，`cin`/`cout` 替代 | Boost.Nowide（`iostream.cpp` + `console_buffer.cpp`） |
+**根因**：原始代码 `*c = b.Event.KeyEvent.uChar.AsciiChar` 对非 ASCII Unicode 字符返回 0（AsciiChar 字段为 0），随后 `if (*c) return 1;` 永不触发，导致函数无限循环丢弃中文按键。
 
-## 修改内容
+**修复**：函数签名从 `int win32read(int *c)` 改为 `int win32read(char* cbuf)`，支持返回多字节 UTF-8 序列：
 
-### 1. 新增 `external/nowide/standalone_boost/` — Boost 配置桩头文件
+- Ctrl+Key 和特殊键（方向键、退格等）：继续使用 `AsciiChar`，写入 `cbuf[0]`，返回 1
+- 可打印非 ASCII 字符：当 `UnicodeChar != 0` 时，通过 `WideCharToMultiByte(CP_UTF8, ...)` 将 UTF-16 宽字符转换为 1-4 字节 UTF-8 序列写入 `cbuf`，返回字节数
+- 纯 ASCII 可打印字符：当 `AsciiChar != 0` 且 `UnicodeChar == 0` 时，写入 `cbuf[0]`，返回 1
 
-消除 Boost.Nowide 对完整 Boost 库的依赖，提供最小宏定义：
+#### 2b. `enableRawMode` — 启用 VT 终端处理（中文显示前提）
 
-| 文件 | 说明 |
-|------|------|
-| `boost/config.hpp` | 平台检测宏（`BOOST_WINDOWS`、`BOOST_MSVC`）、符号导出宏、`BOOST_FALLTHROUGH`、`BOOST_LIKELY`/`BOOST_UNLIKELY` |
-| `boost/version.hpp` | `BOOST_VERSION` 版本号 |
-| `boost/config/auto_link.hpp` | 空文件（`BOOST_NOWIDE_NO_LIB` 已禁用自动链接） |
-| `boost/config/abi_prefix.hpp` | 空文件（MSVC ABI 前缀占位） |
-| `boost/config/abi_suffix.hpp` | 空文件（MSVC ABI 后缀占位） |
+**修复**：在 Windows 分支的输出控制台初始化中：
 
-### 2. 修改 `external/CMakeLists.txt` — 新增两个编译目标
+1. 设置 `consolemodeOut |= ENABLE_VIRTUAL_TERMINAL_PROCESSING`，使 Windows 10 1607+ 控制台原生解释 ANSI/VT100 转义序列（光标移动、清屏、颜色等），绕过原 `ansi::ParseAndPrintANSIString` 的手工 ANSI 解析
+2. 调用 `SetConsoleOutputCP(CP_UTF8)` 设置控制台输出代码页为 UTF-8
+3. 若 VT 处理启用失败（旧版 Windows），回退到 `ansi::ParseAndPrintANSIString` 路径
 
-```cmake
-# cpp-linenoise (Header-only line editing library)
-add_library(linenoise INTERFACE)
-target_include_directories(linenoise INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/cpp-linenoise)
+#### 2c. `win32_write` 函数重写（中文显示）
 
-# Boost.Nowide — standalone console I/O with UTF-8 support (no full Boost required)
-add_library(nowide_console STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/nowide/src/iostream.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/nowide/src/console_buffer.cpp
-)
-target_include_directories(nowide_console PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/nowide/standalone_boost   # Boost shim headers (must come first)
-    ${CMAKE_CURRENT_SOURCE_DIR}/nowide/include             # Nowide headers
-)
-target_compile_definitions(nowide_console PUBLIC BOOST_NOWIDE_NO_LIB)
-target_compile_features(nowide_console PUBLIC cxx_std_11)
+**根因**：原始代码将 UTF-8 字节流传递给 `ansi::ParseAndPrintANSIString()`，该函数逐字节调用 `PushBuffer(*s)` — 将单个 `char` 强制转换为 `WCHAR`。例如中文 "中" (UTF-8: `E4 B8 AD`) 被拆成三个无关 Unicode 码点 `U+00E4` `U+00B8` `U+00AD`，显示为乱码。
+
+**修复**：用 `MultiByteToWideChar(CP_UTF8, ...)` + `WriteConsoleW()` 替换 `ansi::ParseAndPrintANSIString()`：
+
+- 将整个 UTF-8 输出缓冲区一次性转换为 UTF-16 宽字符串
+- 通过 `WriteConsoleW` 写入控制台
+- 配合 2b 启用的 `ENABLE_VIRTUAL_TERMINAL_PROCESSING`，ANSI 转义序列由 Windows 控制台原生解释
+- 栈分配 4096 WCHAR 缓冲区（覆盖行编辑器所有单次输出），超大输出时回退到堆分配
+
+#### 2d. 两处 `win32read` 调用点更新
+
+**`Edit()` 调用点**（`c` 为 `int c` 值类型）：
+```cpp
+// 旧：nread = win32read(&c); if (nread == 1) { cbuf[0] = c; }
+// 新：nread = win32read(cbuf); if (nread >= 1) { c = (unsigned char)cbuf[0]; }
 ```
 
-### 3. 新增 `src/common/console_kit.hpp`（117 行）
-
-`ConsoleKit` 类定义，所有方法均为 `static`（无状态、纯函数式控制台输入工具）：
-
-| 方法 | 说明 |
-|------|------|
-| `init(history_path)` | 初始化：启用多行模式 + 加载历史记录文件 |
-| `readline(prompt, line, quit)` | 读取一行输入（支持 UTF-8、多行、历史、行编辑） |
-| `readline(prompt, line)` | 读取一行输入（简化版，quit 通过返回值表达） |
-| `add_history(line)` | 将有效输入加入历史（自动去重、自动裁剪） |
-| `save_history()` | 持久化历史到文件 |
-| `set_multiline(enabled)` | 切换多行/单行模式 |
-| `set_completion_callback(cb)` | 设置 Tab 自动补全回调 |
-| `is_quit_command(line)` | 判断是否为退出指令（"exit"/"quit"/"q"） |
-| `shutdown()` | 清理：保存历史、恢复终端 |
-
-**边界处理设计：**
-- **非 tty 环境**（管道/文件重定向）：linenoise 自动降级为 `std::getline`，无行编辑
-- **空行/空白行**：`add_history` 过滤，不记录
-- **Ctrl+C**：linenoise 内部处理，返回 quit=true
-- **Ctrl+D（空行）**：视为 EOF，返回 quit=true
-- **历史去重**：linenoise 自动跳过相邻重复行
-- **文件不存在**：`LoadHistory` 静默失败
-- **重复初始化**：`init()` 幂等（`initialized_` 标志保护）
-
-### 4. 新增 `src/common/console_kit.cpp`（172 行）
-
-完整实现，包含：
-
-- **`sanitize_line_ending()`**：清除 Windows 管道场景下残留的 `\r`
-- **`trim_left()` / `trim_right()` / `trim()`**：模块内空白裁剪（避免对 `utils.hpp` 的循环依赖）
-- **`init()`**：调用 `linenoise::SetMultiLine(true)` 启用多行模式，调用 `linenoise::LoadHistory()` 加载历史
-- **`readline()`**：核心读取逻辑 — 先刷新 nowide::cout 输出提示符，再委托给 `linenoise::Readline()`
-- **`is_quit_command()`**：不区分大小写匹配 "exit" / "quit" / "q"
-
-### 5. 修改 `src/common/CMakeLists.txt` — 新增源文件和链接库
-
-```cmake
-# 新增 console_kit.cpp 源文件
-# 新增链接目标：nowide_console linenoise
-target_link_libraries(agent_common PUBLIC
-    nlohmann_json
-    spdlog::spdlog
-    nowide_console    # <-- 新增
-    linenoise         # <-- 新增
-)
+**`completeLine()` 调用点**（`c` 为 `int *c` 指针类型）：
+```cpp
+// 旧：nread = win32read(c); if (nread == 1) { cbuf[0] = *c; }
+// 新：nread = win32read(cbuf); if (nread >= 1) { *c = (unsigned char)cbuf[0]; }
 ```
 
-### 6. 修改 `src/main/main.cpp` — 替换输入处理逻辑
+## 边界处理
 
-**主要变更：**
-
-| 位置 | 旧代码 | 新代码 |
-|------|--------|--------|
-| 第 1-10 行 | `#include <iostream>` | 新增 `#include <boost/nowide/iostream.hpp>` 和 `#include "console_kit.hpp"` |
-| 第 14-15 行 | — | 新增 `namespace io = boost::nowide;` 别名 |
-| 输出 | `std::cout << ...` | 全部替换为 `io::cout << ...`（`boost::nowide::cout`） |
-| 第 127-135 行 | `while (true) { std::cout << "\n> "; if (!std::getline(...)) break; ... }` | 替换为 `ConsoleKit::init()` + `ConsoleKit::readline()` 循环 |
-| 第 136 行后 | — | 新增 `ConsoleKit::shutdown()` 清理 |
-
-**新 REPL 循环特点：**
-- 提示符从 `"> "` 改为 `"agent> "`
-- 支持方向键翻阅历史、行内编辑、Tab 补全
-- 多行模式下 Enter 换行，空行提交
-- 支持 `exit` / `quit` / `q` 退出（不区分大小写）
-- Ctrl+D / Ctrl+C 安全退出
-
-## 设计原则
-
-### 零依赖增长
-通过 `standalone_boost/` 桩头文件消除对完整 Boost（1.66+）的依赖。nowide 仅需 Windows SDK 头文件即可编译。
-
-### 静态方法语义
-`ConsoleKit` 所有方法均为 `static`，无成员变量，遵循 `ResponseParser` / `MessageFormatter` 相同的设计范式：线程安全、零开销、纯函数。
-
-### 自动降级
-非 tty 环境（CI 管道、文件重定向）下 linenoise 自动检测并降级为 `std::getline`，无需调用方判断。多行模式在降级场景下自然失效。
-
-### 边界安全
-- 历史去重、长度裁剪、文件缺失静默处理
-- `\r` 清理兼容 Windows 管道输入
-- 重复初始化幂等
-- 空行回溯（不记录，不回传）
+| 场景 | 处理方式 |
+|------|---------|
+| 非 tty 环境（管道/重定向） | linenoise 自动降级为 `getc(stdin)`，UTF-8 字节流透传 |
+| 中文输入 | `UnicodeChar` → `WideCharToMultiByte(CP_UTF8)` → 1-4 字节 |
+| 中文输出 | `MultiByteToWideChar(CP_UTF8)` → `WriteConsoleW`，完整 UTF-16 码点 |
+| VT 处理不可用（Win10 1607-） | `SetConsoleMode` 失败时回退，`consolemodeOut` 保留原标志 |
+| Ctrl+C / Ctrl+D | `win32read` 返回 `cbuf[0] = 3` / `cbuf[0] = 4`，linenoise 上层处理 |
+| 超大输出（>4096 字节） | `win32_write` 回退到堆分配 `new WCHAR[]` |
 
 ## 验证结果
 
 ### 编译
-
 ```
 零错误、零警告
-3 个新库/可执行文件编译成功
-nowide_console.lib → agent_common.lib → ai_agent.exe 链接成功
+全部 13 个目标编译成功
 ```
 
 ### 单元测试
-
 ```
 100% tests passed, 0 tests failed out of 6
   test_logger          Passed
@@ -176,42 +92,21 @@ nowide_console.lib → agent_common.lib → ai_agent.exe 链接成功
 
 ### 端到端测试
 
+**非交互模式（UTF-8 管道输入）**：
 ```
-$ echo "hello" | ./build/bin/Release/ai_agent.exe --no-interactive
-
-[2026-04-25 10:12:01.562] [info] [12916] [:] AI Agent starting
-...
-Endpoint: https://api.deepseek.com/anthropic/chat/completions
-Model: deepseek-v4-pro
-...
-→ 正常启动，nowide::cout 输出正常，无编码问题
+$ echo "你好" | ./ai_agent.exe --no-interactive
+→ 正常输出 API 中文响应，无乱码
 ```
 
-### REPL 交互测试
-
+**交互模式（管道输入）**：
 ```
-$ ./build/bin/Release/ai_agent.exe
-
-AI Agent ready. Type 'exit' to quit.
-(Multi-line: Enter to break, double Enter to submit)
-agent> hello world
-[Agent response...]
-agent> exit
-[2026-04-25 ...] [info] [12916] [:] AI Agent shutting down
+$ printf "你好\r\nexit\r\n" | ./ai_agent.exe
+→ 你好！😊 很高兴见到你！
+→ 完整中文对话轮转，输入输出均无乱码
 ```
 
-## 修改文件清单
+## 技术要点
 
-| 文件 | 状态 |
-|------|------|
-| `external/nowide/standalone_boost/boost/config.hpp` | 新增 — Boost 平台检测桩头 |
-| `external/nowide/standalone_boost/boost/version.hpp` | 新增 — Boost 版本桩头 |
-| `external/nowide/standalone_boost/boost/config/auto_link.hpp` | 新增 — 自动链接桩头（空） |
-| `external/nowide/standalone_boost/boost/config/abi_prefix.hpp` | 新增 — ABI 前缀桩头（空） |
-| `external/nowide/standalone_boost/boost/config/abi_suffix.hpp` | 新增 — ABI 后缀桩头（空） |
-| `external/CMakeLists.txt` | 修改 — 新增 `linenoise` + `nowide_console` 目标 |
-| `src/common/console_kit.hpp` | 新增 — 控制台输入模块头文件（117 行） |
-| `src/common/console_kit.cpp` | 新增 — 控制台输入模块实现（172 行） |
-| `src/common/CMakeLists.txt` | 修改 — 新增 `console_kit.cpp`，链接 `nowide_console` + `linenoise` |
-| `src/main/main.cpp` | 修改 — 使用 ConsoleKit 替代 `std::getline`，使用 `nowide::cout` 替代 `std::cout` |
-| `changelog/FIXES_9_CHANGELOG.md` | 新增 |
+1. **WriteConsoleW 是 Windows 下唯一可靠的 UTF-8 输出方式**：`WriteConsoleA` 在 CP_UTF8 下有历史 bug（缓冲区截断），`WriteConsoleW` 直接接受 UTF-16 绕过代码页转换
+2. **Windows 10 1607+ 的 VT 处理**：设置 `ENABLE_VIRTUAL_TERMINAL_PROCESSING` 后，控制台原生处理 ANSI 转义序列，无需手工解析
+3. **linenoise 的原始模式依赖**：在 `ReadConsoleInput` 读取按键之前，必须通过 `SetConsoleMode(hIn, ...)` 关闭 `ENABLE_PROCESSED_INPUT`。任何对同一控制台句柄的干扰操作（特别是输出句柄的 mode 切换）都可能破坏原始模式

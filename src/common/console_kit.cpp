@@ -88,12 +88,10 @@ bool ConsoleKit::readline(const std::string& prompt, std::string& line, bool& qu
     quit = false;
     line.clear();
 
-    // 输出提示符（使用 nowide::cout 保证 UTF-8 编码正确）
-    boost::nowide::cout << prompt;
-    boost::nowide::cout.flush();
-
     // 委托给 linenoise 进行行编辑
-    // Readline(const char* prompt, std::string& line) 返回 true 表示 EOF/quit
+    // Readline 内部自行输出提示符，此处不应再向控制台写入任何内容，
+    // 否则 nowide 的 WriteConsoleW 操作会干扰 linenoise 的 enableRawMode 调用，
+    // 导致 stdin 无法正确切换到原始模式，进而阻止用户输入。
     quit = linenoise::Readline(prompt.c_str(), line);
 
     // 清理 Windows 下可能残留的 \r
