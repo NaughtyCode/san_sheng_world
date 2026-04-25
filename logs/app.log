@@ -1,0 +1,13 @@
+[2026-04-25 09:19:24.565] [info] [20948] [:] AI Agent starting
+[2026-04-25 09:19:24.565] [info] [20948] [:] LuauEngine: initialized with sandbox and log API
+[2026-04-25 09:19:24.565] [info] [20948] [:] ToolRegistry: registered tool "calculator"
+[2026-04-25 09:19:24.565] [info] [20948] [:] Agent initialized with model: deepseek-v4-pro
+[2026-04-25 09:19:24.565] [info] [20948] [:] Model info:
+Endpoint: https://api.deepseek.com/anthropic/chat/completions
+Model: deepseek-v4-pro
+API Version: 2023-06-01
+API Key: sk-0c85****ad32
+Max Tokens: 4096
+Max Iterations: 10
+[2026-04-25 09:19:24.567] [info] [20948] [:] Running single prompt mode
+[2026-04-25 09:19:24.567] [info] [20948] [:] AgentLoop: starting with user input, 1 tools registered

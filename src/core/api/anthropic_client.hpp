@@ -10,6 +10,7 @@ namespace agent {
 
 using json = nlohmann::json;
 
+/// 内部消息结构：对话历史中的一条消息
 struct Message {
     std::string role;       // 消息角色：user / assistant / tool
     std::string content;    // 文本内容
@@ -19,6 +20,7 @@ struct Message {
     std::string reasoning_content; // DeepSeek thinking mode 推理内容（需在后续请求中回传）
 };
 
+/// 工具定义结构：向 API 声明可用工具
 struct ToolDefinition {
     std::string name;             // 工具名称
     std::string description;      // 工具描述
@@ -52,6 +54,9 @@ public:
     /**
      * @brief 发送 Messages API 请求。
      *
+     * 内部使用 process_engine::MessageFormatter 构造请求体，
+     * 通过 HttpClient 发送 POST 请求，并处理 HTTP 错误码和 JSON 解析。
+     *
      * @param model       模型名称
      * @param messages    对话历史
      * @param tools       可用工具列表（可选）
@@ -64,19 +69,6 @@ public:
                          int max_tokens = constants::DEFAULT_MAX_TOKENS);
 
 private:
-    /**
-     * @brief 构造请求体 JSON。
-     */
-    json build_request_body(const std::string& model,
-                            const std::vector<Message>& messages,
-                            const std::vector<ToolDefinition>& tools,
-                            int max_tokens);
-
-    /**
-     * @brief 将内部 Message 列表转换为 Anthropic API 格式的 JSON 数组。
-     */
-    json messages_to_api_format(const std::vector<Message>& msgs);
-
     HttpClient http_;
     std::string api_key_;
     std::string model_ = constants::DEFAULT_MODEL;

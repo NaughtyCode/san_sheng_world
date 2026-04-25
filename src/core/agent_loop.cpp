@@ -1,6 +1,7 @@
 #include "agent_loop.hpp"
 #include "logger.hpp"
 #include "script/script_tool.hpp"
+#include "process_engine/response_parser.hpp"
 
 namespace agent {
 
@@ -110,7 +111,7 @@ std::string AgentLoop::run(const std::string& user_input) {
     for (int iter = 0; iter < max_iterations_; ++iter) {
         LOG_DEBUG("AgentLoop: iteration {}/{}", iter + 1, max_iterations_);
 
-        // 构造 API 请求
+        // 构造 API 请求（内部使用 MessageFormatter 格式化消息）
         auto response = api_client_.messages_create(
             api_client_.get_model(),
             conversation_.get_messages(),
@@ -122,12 +123,14 @@ std::string AgentLoop::run(const std::string& user_input) {
             return "Error: failed to get response from API";
         }
 
-        // 提取 reasoning_content（DeepSeek thinking mode 要求回传）
-        std::string reasoning = extract_reasoning(response);
+        // ------ 使用 ResponseParser 解析 API 响应 ------
 
-        // 检查是否需要停止
-        if (should_stop(response)) {
-            std::string text = extract_text(response);
+        // 提取 reasoning_content（DeepSeek thinking mode 要求回传）
+        std::string reasoning = ResponseParser::extract_reasoning(response);
+
+        // 检查是否应停止
+        if (ResponseParser::should_stop(response)) {
+            std::string text = ResponseParser::extract_text(response);
             if (!text.empty()) {
                 conversation_.add_assistant_msg(text, "", "", {}, reasoning);
             }
@@ -135,8 +138,8 @@ std::string AgentLoop::run(const std::string& user_input) {
         }
 
         // 检查是否包含 tool_use
-        if (has_tool_use(response)) {
-            auto tool_use = extract_tool_use(response);
+        if (ResponseParser::has_tool_use(response)) {
+            auto tool_use = ResponseParser::extract_tool_use(response);
 
             std::string tool_id = tool_use.value(JSON_ID, "");
             std::string tool_name = tool_use.value(JSON_NAME, "");
@@ -146,7 +149,7 @@ std::string AgentLoop::run(const std::string& user_input) {
 
             // 将 assistant 消息（含 tool_use）写入对话历史
             // reasoning_content 必须回传，否则 DeepSeek API 返回 400 错误
-            std::string assistant_text = extract_text(response);
+            std::string assistant_text = ResponseParser::extract_text(response);
             conversation_.add_assistant_msg(assistant_text, tool_name, tool_id, tool_input, reasoning);
 
             // 执行工具
@@ -159,7 +162,7 @@ std::string AgentLoop::run(const std::string& user_input) {
                       tool_result.substr(0, 200));
         } else {
             // 纯文本响应 — agent 完成
-            std::string text = extract_text(response);
+            std::string text = ResponseParser::extract_text(response);
             if (!text.empty()) {
                 conversation_.add_assistant_msg(text, "", "", {}, reasoning);
             }
@@ -169,151 +172,6 @@ std::string AgentLoop::run(const std::string& user_input) {
 
     LOG_WARN("AgentLoop: max iterations ({}) reached", max_iterations_);
     return "Agent stopped: maximum iterations reached.";
-}
-
-// 解析 OpenAI 响应：从 choices[0].message 中提取消息对象
-static json get_message_from_response(const json& response) {
-    if (response.contains(constants::JSON_CHOICES) &&
-        response[constants::JSON_CHOICES].is_array() &&
-        !response[constants::JSON_CHOICES].empty()) {
-        const auto& first_choice = response[constants::JSON_CHOICES][0];
-        if (first_choice.contains(constants::JSON_MESSAGE)) {
-            return first_choice[constants::JSON_MESSAGE];
-        }
-    }
-    // 兼容 Anthropic 原始格式：直接在根级别包含 content
-    return response;
-}
-
-bool AgentLoop::has_tool_use(const json& response) const {
-    json msg = get_message_from_response(response);
-
-    // OpenAI 格式：检查 message.tool_calls 数组
-    if (msg.contains(constants::JSON_TOOL_CALLS) &&
-        msg[constants::JSON_TOOL_CALLS].is_array() &&
-        !msg[constants::JSON_TOOL_CALLS].empty()) {
-        return true;
-    }
-
-    // 兼容 Anthropic 原始格式：检查 content 数组中的 tool_use 块
-    if (msg.contains(constants::JSON_CONTENT) && msg[constants::JSON_CONTENT].is_array()) {
-        for (const auto& block : msg[constants::JSON_CONTENT]) {
-            if (block.value(constants::JSON_TYPE, "") == constants::VALUE_TOOL_USE) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-json AgentLoop::extract_tool_use(const json& response) const {
-    json msg = get_message_from_response(response);
-
-    // OpenAI 格式：从 tool_calls 数组中提取第一个工具调用
-    // 并转换成内部统一格式 {id, name, input}
-    if (msg.contains(constants::JSON_TOOL_CALLS) &&
-        msg[constants::JSON_TOOL_CALLS].is_array() &&
-        !msg[constants::JSON_TOOL_CALLS].empty()) {
-        const auto& tc = msg[constants::JSON_TOOL_CALLS][0];
-        json result;
-        result[constants::JSON_ID] = tc.value(constants::JSON_ID, "");
-
-        // function.name 映射为 name
-        if (tc.contains(constants::JSON_FUNCTION)) {
-            result[constants::JSON_NAME] =
-                tc[constants::JSON_FUNCTION].value(constants::JSON_NAME, "");
-
-            // function.arguments 是 JSON 字符串，需要解析为 input
-            std::string args_str =
-                tc[constants::JSON_FUNCTION].value(constants::JSON_ARGUMENTS, "{}");
-            try {
-                result[constants::JSON_INPUT] = json::parse(args_str);
-            } catch (const json::parse_error&) {
-                result[constants::JSON_INPUT] = json::object();
-            }
-        } else {
-            result[constants::JSON_NAME] = "";
-            result[constants::JSON_INPUT] = json::object();
-        }
-        return result;
-    }
-
-    // 兼容 Anthropic 原始格式
-    if (msg.contains(constants::JSON_CONTENT)) {
-        for (const auto& block : msg[constants::JSON_CONTENT]) {
-            if (block.value(constants::JSON_TYPE, "") == constants::VALUE_TOOL_USE) {
-                return block;
-            }
-        }
-    }
-    return json::object();
-}
-
-std::string AgentLoop::extract_text(const json& response) const {
-    json msg = get_message_from_response(response);
-
-    // OpenAI 格式：content 是纯字符串
-    if (msg.contains(constants::JSON_CONTENT) && msg[constants::JSON_CONTENT].is_string()) {
-        return msg[constants::JSON_CONTENT].get<std::string>();
-    }
-
-    // 兼容 Anthropic 原始格式：content 是数组
-    if (msg.contains(constants::JSON_CONTENT) && msg[constants::JSON_CONTENT].is_array()) {
-        std::string text;
-        for (const auto& block : msg[constants::JSON_CONTENT]) {
-            if (block.value(constants::JSON_TYPE, "") == constants::VALUE_TEXT) {
-                std::string t = block.value(constants::JSON_TEXT, "");
-                if (!t.empty()) {
-                    if (!text.empty()) text += "\n";
-                    text += t;
-                }
-            }
-        }
-        return text;
-    }
-    return "";
-}
-
-std::string AgentLoop::extract_reasoning(const json& response) const {
-    json msg = get_message_from_response(response);
-
-    // DeepSeek thinking mode 在 message 中返回 reasoning_content 字段
-    if (msg.contains(constants::JSON_REASONING_CONTENT) &&
-        msg[constants::JSON_REASONING_CONTENT].is_string()) {
-        return msg[constants::JSON_REASONING_CONTENT].get<std::string>();
-    }
-    return "";
-}
-
-bool AgentLoop::should_stop(const json& response) const {
-    // OpenAI 格式：检查 choices[0].finish_reason
-    if (response.contains(constants::JSON_CHOICES) &&
-        response[constants::JSON_CHOICES].is_array() &&
-        !response[constants::JSON_CHOICES].empty()) {
-        const auto& first_choice = response[constants::JSON_CHOICES][0];
-        std::string finish_reason = first_choice.value(constants::JSON_FINISH_REASON, "");
-
-        // "stop" 或 "length"（max_tokens）表示对话结束
-        if (finish_reason == constants::VALUE_STOP) return true;
-        if (finish_reason == constants::VALUE_MAX_TOKENS) return true;
-        // "tool_calls" 表示需要执行工具，不应停止
-        if (finish_reason == constants::VALUE_TOOL_CALLS) return false;
-
-        // 如果 finish_reason 未知且没有 tool_use，则停止
-        if (!has_tool_use(response)) return true;
-        return false;
-    }
-
-    // 兼容 Anthropic 原始格式：检查 stop_reason
-    std::string reason = response.value(constants::JSON_STOP_REASON, "");
-    if (reason == constants::VALUE_END_TURN) return true;
-    if (reason == constants::VALUE_STOP_SEQUENCE) return true;
-    if (reason == constants::VALUE_MAX_TOKENS) return true;
-
-    // 如果响应中没有 tool_use（纯文本），也视为完成
-    if (!has_tool_use(response)) return true;
-
-    return false;
 }
 
 } // namespace agent

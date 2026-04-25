@@ -13,6 +13,8 @@ claude --dangerously-skip-permissions
 4. 请按 ./fixes/issues_3.txt 中的要求执行任务
 5. 请按 ./fixes/issues_4.txt 中的要求执行任务
 6. 请按 ./fixes/issues_5.txt 中的要求执行任务
-7. 请按 ./fixes/issues_7.txt 中的要求执行任务
+7. 请按 ./fixes/issues_6.txt 中的要求执行任务
+8. 请按 ./fixes/issues_7.txt 中的要求执行任务
+9. 请按 ./fixes/issues_8.txt 中的要求执行任务
 
 --------------------- End of Task --------------------------

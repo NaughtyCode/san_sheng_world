@@ -40,15 +40,19 @@ public:
     void load_script_tool(const std::string& path, const std::string& func_name);
     void load_builtin_tools();
 
+    /**
+     * @brief 执行 Agent 主循环。
+     *
+     * 使用 process_engine 模块处理 API 响应解析：
+     *   - ResponseParser 负责提取 text / tool_use / reasoning / stop 判断
+     *   - MessageFormatter 负责构造请求体（由 AnthropicClient 内部调用）
+     *
+     * @param user_input 用户输入文本
+     * @return Agent 最终响应文本
+     */
     std::string run(const std::string& user_input);
 
 private:
-    bool has_tool_use(const nlohmann::json& response) const;
-    nlohmann::json extract_tool_use(const nlohmann::json& response) const;
-    std::string extract_text(const nlohmann::json& response) const;
-    std::string extract_reasoning(const nlohmann::json& response) const;
-    bool should_stop(const nlohmann::json& response) const;
-
     AnthropicClient api_client_;
     Conversation conversation_;
     ToolRegistry tool_registry_;

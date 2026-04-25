@@ -1,5 +1,6 @@
 #include "api/anthropic_client.hpp"
 #include "logger.hpp"
+#include "process_engine/message_formatter.hpp"
 
 namespace agent {
 
@@ -22,23 +23,26 @@ json AnthropicClient::messages_create(const std::string& model,
                                        const std::vector<Message>& messages,
                                        const std::vector<ToolDefinition>& tools,
                                        int max_tokens) {
-    auto body = build_request_body(model, messages, tools, max_tokens);
+    // 使用 process_engine::MessageFormatter 构造请求体
+    auto body = MessageFormatter::build_request_body(model, messages, tools, max_tokens);
 
     // 构造完整 URL 用于诊断输出
     std::string full_url = base_url_ + constants::API_PATH_MESSAGES;
     LOG_DEBUG("AnthropicClient: POST {}, model={}, msg_count={}",
               full_url, model, messages.size());
 
-    // OpenAI 兼容端点使用 Bearer 认证方式，但 DeepSeek 同时支持 x-api-key 和 Authorization 头
+    // OpenAI 兼容端点使用 Bearer 认证方式，DeepSeek 同时支持 x-api-key 和 Authorization
     http_.set_header(constants::API_HEADER_ANTHROPIC_VERSION, api_version_);
     auto resp = http_.post(constants::API_PATH_MESSAGES, body.dump());
 
+    // ------ 连接失败 ------
     if (resp.status == -1) {
         LOG_ERROR("AnthropicClient: HTTP connection failed (url={}): {}",
                   full_url, resp.body);
         return json::object();
     }
 
+    // ------ HTTP 错误码 ------
     if (resp.status < 200 || resp.status >= 300) {
         // 针对常见 HTTP 错误码提供排查建议
         std::string hint;
@@ -57,94 +61,13 @@ json AnthropicClient::messages_create(const std::string& model,
         return json::object();
     }
 
+    // ------ JSON 解析 ------
     try {
         return json::parse(resp.body);
     } catch (const json::parse_error& e) {
         LOG_ERROR("AnthropicClient: JSON parse error: {}", e.what());
         return json::object();
     }
-}
-
-json AnthropicClient::build_request_body(const std::string& model,
-                                          const std::vector<Message>& messages,
-                                          const std::vector<ToolDefinition>& tools,
-                                          int max_tokens) {
-    using namespace constants;
-    json body;
-    body[JSON_MODEL] = model;
-    body[JSON_MAX_TOKENS] = max_tokens;
-    body[JSON_MESSAGES] = messages_to_api_format(messages);
-
-    // 使用 OpenAI Chat Completions 格式构造 tools 数组
-    // 每个工具对象包含 type: "function" 和一个 function 子对象
-    if (!tools.empty()) {
-        json tools_array = json::array();
-        for (const auto& td : tools) {
-            json t;
-            // OpenAI 格式要求每个 tool 必须有 type 字段
-            t[JSON_TYPE] = VALUE_FUNCTION;
-
-            // 工具详情包装在 function 对象中
-            json func;
-            func[JSON_NAME] = td.name;
-            func[JSON_DESCRIPTION] = td.description;
-            // OpenAI 使用 parameters 而非 Anthropic 的 input_schema
-            func[JSON_PARAMETERS] = td.input_schema;
-            t[JSON_FUNCTION] = func;
-
-            tools_array.push_back(t);
-        }
-        body[JSON_TOOLS] = tools_array;
-    }
-    return body;
-}
-
-json AnthropicClient::messages_to_api_format(const std::vector<Message>& msgs) {
-    using namespace constants;
-    json arr = json::array();
-    for (const auto& m : msgs) {
-        json msg;
-        msg[JSON_ROLE] = m.role;
-
-        if (m.role == VALUE_TOOL) {
-            // OpenAI 格式 — tool 角色消息
-            // tool 消息的 content 为纯字符串，tool_call_id 与 role 平级
-            msg[JSON_TOOL_CALL_ID] = m.tool_call_id;
-            msg[JSON_CONTENT] = m.content;
-        } else if (m.role == VALUE_ASSISTANT && !m.tool_name.empty()) {
-            // OpenAI 格式 — assistant 消息包含 tool_calls 数组
-            // content 为纯字符串（可为空），tool_calls 为数组
-            msg[JSON_CONTENT] = m.content.empty() ? "" : m.content;
-
-            // DeepSeek thinking mode：必须将 reasoning_content 回传
-            if (!m.reasoning_content.empty()) {
-                msg[JSON_REASONING_CONTENT] = m.reasoning_content;
-            }
-
-            json tool_call;
-            tool_call[JSON_ID] = m.tool_call_id;
-            tool_call[JSON_TYPE] = VALUE_FUNCTION;
-            // arguments 在 OpenAI 中必须是 JSON 字符串
-            tool_call[JSON_FUNCTION] = json::object();
-            tool_call[JSON_FUNCTION][JSON_NAME] = m.tool_name;
-            tool_call[JSON_FUNCTION][JSON_ARGUMENTS] = m.tool_input.is_null()
-                ? "{}" : m.tool_input.dump();
-
-            msg[JSON_TOOL_CALLS] = json::array({tool_call});
-        } else {
-            // 纯文本消息 — user / assistant（不含 tool_use）均为此分支
-            // OpenAI 格式中 content 为纯字符串
-            msg[JSON_CONTENT] = m.content;
-
-            // DeepSeek thinking mode：即使是纯文本 assistant 消息也需要回传 reasoning_content
-            if (m.role == VALUE_ASSISTANT && !m.reasoning_content.empty()) {
-                msg[JSON_REASONING_CONTENT] = m.reasoning_content;
-            }
-        }
-
-        arr.push_back(msg);
-    }
-    return arr;
 }
 
 } // namespace agent
